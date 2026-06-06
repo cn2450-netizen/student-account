@@ -30,17 +30,9 @@ export function AppShell({
             </h1>
             <p className="text-xs text-slate-400">Fundraising &amp; expense management</p>
           </div>
-          <div className="relative group text-right text-sm">
-            <button
-              type="button"
-              className="rounded-lg px-2 py-1 hover:bg-slate-800/70 focus:bg-slate-800/70 focus:outline-none"
-            >
-              <p>{username}</p>
-              <p className="text-xs uppercase tracking-wide text-slate-400">{role}</p>
-            </button>
-            <div className="absolute right-0 mt-1 hidden min-w-36 rounded-lg border border-slate-700 bg-slate-900 p-1 text-left shadow-lg group-hover:block group-focus-within:block">
-              <SignOutButton />
-            </div>
+          <div className="text-right text-sm">
+            <p>{username}</p>
+            <p className="text-xs uppercase tracking-wide text-slate-400">{role}</p>
           </div>
         </div>
       </header>
