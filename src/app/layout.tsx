@@ -15,7 +15,7 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Student Account Tracker",
+  title: "WWT Student Account Tracker",
   description: "Track student fundraising and expenses",
 };
 

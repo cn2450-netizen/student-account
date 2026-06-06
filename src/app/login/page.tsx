@@ -8,7 +8,7 @@ export default function LoginPage() {
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(6,182,212,0.15),transparent_40%),radial-gradient(circle_at_80%_0%,rgba(16,185,129,0.12),transparent_35%)]" />
       <section className="relative mx-auto flex min-h-screen w-full max-w-md flex-col justify-center px-6">
         <h1 className="mb-1 text-3xl font-semibold tracking-tight text-slate-100">
-          Student Account Tracker
+          WWT Student Account Tracker
         </h1>
         <p className="mb-6 text-sm text-slate-400">
           Track fundraising and expenses for your students.
