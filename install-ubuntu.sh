@@ -607,6 +607,7 @@ Type=oneshot
 User=root
 Environment=APP_DIR=${APP_DIR}
 Environment=UPDATE_BRANCH=${UPDATE_BRANCH}
+Environment=GIT_SSL_NO_VERIFY=true
 ExecStart=${UPDATER_BIN}
 StandardOutput=append:/var/log/moneyfinder/auto-update.log
 StandardError=append:/var/log/moneyfinder/auto-update.log

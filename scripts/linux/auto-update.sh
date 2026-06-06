@@ -52,6 +52,8 @@ command -v git >/dev/null || { err "git not found."; exit 1; }
 command -v npm >/dev/null || { err "npm not found."; exit 1; }
 
 # ── Fetch remote refs (network-only, no working tree change yet) ─────────────
+# GIT_SSL_NO_VERIFY bypasses TLS inspection on corporate proxies for git operations.
+export GIT_SSL_NO_VERIFY=true
 log "Fetching remote refs"
 if ! git -C "${APP_DIR}" fetch origin "${BRANCH}" --quiet 2>>"${LOG_FILE}"; then
   log "git fetch failed (network issue or rate limit) — skipping this cycle."
@@ -84,6 +86,15 @@ systemctl stop moneyfinder 2>>"${LOG_FILE}" || log "  (service was not running)"
 log "Applying changes: git reset --hard origin/${BRANCH}"
 git -C "${APP_DIR}" reset --hard "origin/${BRANCH}" >>"${LOG_FILE}" 2>&1
 
+# ── Self-update ───────────────────────────────────────────────────────────────
+# Replace the installed binary with the version just pulled from git so fixes
+# to this script take effect on the next run without manual intervention.
+SELF="/usr/local/bin/moneyfinder-auto-update"
+if [[ -f "${APP_DIR}/scripts/linux/auto-update.sh" ]]; then
+  install -m 0755 -o root -g root "${APP_DIR}/scripts/linux/auto-update.sh" "${SELF}"
+  log "Auto-update script refreshed at ${SELF}"
+fi
+
 # ── Offline font patch ────────────────────────────────────────────────────────
 # Corporate networks block Google Fonts at build time.
 layout="${APP_DIR}/src/app/layout.tsx"
@@ -95,7 +106,7 @@ import "./globals.css";
 import { NextAuthSessionProvider } from "@/components/session-provider";
 
 export const metadata: Metadata = {
-  title: "Student Account Tracker",
+  title: "WWT Student Account Tracker",
   description: "Secure student account tracking, requests, and audit operations",
 };
 
