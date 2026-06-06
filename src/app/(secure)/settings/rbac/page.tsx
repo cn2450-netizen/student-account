@@ -63,7 +63,7 @@ const ROLES = [
 ];
 
 export default async function SettingsRbacPage() {
-  await requirePermission("admin");
+  await requirePermission("settings");
 
   return (
     <div className="space-y-6">

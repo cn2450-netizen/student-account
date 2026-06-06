@@ -41,7 +41,7 @@ export default async function SettingsSslPage({
 }: {
   searchParams?: { updated?: string };
 }) {
-  await requirePermission("admin");
+  await requirePermission("settings");
 
   const appUrl = process.env.NEXTAUTH_URL ?? "";
   const nodeEnv = process.env.NODE_ENV ?? "development";

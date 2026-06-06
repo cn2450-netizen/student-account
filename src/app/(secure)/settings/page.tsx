@@ -2,7 +2,7 @@ import Link from "next/link";
 import { requirePermission } from "@/lib/secure-page";
 
 export default async function SettingsPage() {
-  await requirePermission("admin");
+  await requirePermission("settings");
 
   const cards = [
     {

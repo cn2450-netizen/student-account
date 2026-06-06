@@ -1,5 +1,6 @@
 export type Permission =
   | "admin"               // full admin access
+  | "settings"            // access settings pages (admin + president)
   | "approvals"           // manage account approval queue
   | "allStudents"         // view/manage all students
   | "allFunds"            // view/manage all fundraising & expenses
@@ -11,8 +12,8 @@ export type Permission =
   | "unlockAccounts";     // unlock permanently locked accounts (president + admin)
 
 const ROLE_PERMISSIONS: Record<string, Permission[]> = {
-  ADMIN:                ["admin", "approvals", "allStudents", "allFunds", "fundRequests", "manageFundraising", "ownStudents", "ownFunds", "unlockAccounts"],
-  PRESIDENT:            ["approvals", "allStudents", "allFunds", "fundRequests", "unlockAccounts"],
+  ADMIN:                ["admin", "settings", "approvals", "allStudents", "allFunds", "fundRequests", "manageFundraising", "ownStudents", "ownFunds", "unlockAccounts"],
+  PRESIDENT:            ["settings", "approvals", "allStudents", "allFunds", "fundRequests", "unlockAccounts"],
   TREASURER:            ["approvals", "allStudents", "allFunds", "fundRequests"],
   FUNDRAISING_MANAGER:  ["allStudents", "manageFundraising"],
   BOARD_MEMBER:         ["allStudents"],

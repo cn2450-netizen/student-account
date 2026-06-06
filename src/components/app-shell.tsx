@@ -5,6 +5,7 @@ type NavEntry = {
   href: string;
   label: string;
   visible: boolean;
+  subItem?: boolean;
 };
 
 export function AppShell({
@@ -12,13 +13,11 @@ export function AppShell({
   username,
   role,
   nav,
-  showSettings,
 }: {
   children: React.ReactNode;
   username: string;
   role: string;
   nav: NavEntry[];
-  showSettings?: boolean;
 }) {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100">
@@ -40,14 +39,6 @@ export function AppShell({
               <p className="text-xs uppercase tracking-wide text-slate-400">{role}</p>
             </button>
             <div className="absolute right-0 mt-1 hidden min-w-36 rounded-lg border border-slate-700 bg-slate-900 p-1 text-left shadow-lg group-hover:block group-focus-within:block">
-              {showSettings && (
-                <Link
-                  href="/settings"
-                  className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-slate-300 hover:bg-slate-800 hover:text-cyan-300"
-                >
-                  Settings
-                </Link>
-              )}
               <SignOutButton />
             </div>
           </div>
@@ -59,15 +50,25 @@ export function AppShell({
           <nav className="space-y-1">
             {nav
               .filter((n) => n.visible)
-              .map((item) => (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className="block rounded-lg px-3 py-2 text-sm text-slate-300 transition hover:bg-slate-800 hover:text-cyan-300"
-                >
-                  {item.label}
-                </Link>
-              ))}
+              .map((item) =>
+                item.subItem ? (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className="block rounded-lg py-1.5 pl-6 pr-3 text-xs text-slate-400 transition hover:bg-slate-800 hover:text-cyan-300"
+                  >
+                    {item.label}
+                  </Link>
+                ) : (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className="block rounded-lg px-3 py-2 text-sm text-slate-300 transition hover:bg-slate-800 hover:text-cyan-300"
+                  >
+                    {item.label}
+                  </Link>
+                )
+              )}
           </nav>
           <div className="mt-3 border-t border-slate-800 pt-3">
             <SignOutButton />

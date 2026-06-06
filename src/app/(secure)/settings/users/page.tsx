@@ -5,7 +5,7 @@ import { UsersTable } from "@/components/users-table";
 import { CreateStaffUserForm } from "@/components/create-staff-user-form";
 
 export default async function SettingsUsersPage() {
-  const session = await requirePermission("admin");
+  const session = await requirePermission("settings");
   const currentSession = await getCurrentSession();
 
   const users = await prisma.user.findMany({
