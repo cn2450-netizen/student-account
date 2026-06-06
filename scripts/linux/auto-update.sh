@@ -132,13 +132,16 @@ fi
 # during npm downloads and Prisma engine downloads — not used by the running app.
 export NODE_TLS_REJECT_UNAUTHORIZED=0
 
+# All build commands must run from APP_DIR so Prisma can locate schema.prisma
+cd "${APP_DIR}"
+
 log "Clearing stale build cache"
 rm -rf "${APP_DIR}/.next" "${APP_DIR}/node_modules"
 
 log "Installing npm dependencies"
-npm ci --prefix "${APP_DIR}" >>"${LOG_FILE}" 2>&1 || {
+npm ci >>"${LOG_FILE}" 2>&1 || {
   log "npm ci failed — retrying with npm install"
-  npm install --prefix "${APP_DIR}" >>"${LOG_FILE}" 2>&1
+  npm install >>"${LOG_FILE}" 2>&1
 }
 
 log "Regenerating Prisma client"
@@ -148,7 +151,7 @@ log "Applying database migrations"
 node "${APP_DIR}/node_modules/prisma/build/index.js" db push --accept-data-loss >>"${LOG_FILE}" 2>&1
 
 log "Building Next.js production bundle"
-npm run build --prefix "${APP_DIR}" >>"${LOG_FILE}" 2>&1
+npm run build >>"${LOG_FILE}" 2>&1
 
 log "Restoring file ownership to ${APP_USER}"
 chown -R "${APP_USER}:${APP_USER}" "${APP_DIR}"
