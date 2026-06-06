@@ -17,5 +17,6 @@ declare module "next-auth/jwt" {
     role?: string;
     userId?: string;
     forcePasswordChange?: boolean;
+    syncedAt?: number;
   }
 }

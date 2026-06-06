@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { compare, hash } from "bcryptjs";
 import { type AuthOptions, getServerSession } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
@@ -118,14 +119,21 @@ export const authOptions: AuthOptions = {
         token.forcePasswordChange =
           typeof u.forcePasswordChange === "boolean" ? u.forcePasswordChange : undefined;
       } else if (token.userId) {
-        // Keep token in sync with DB changes (e.g. after force-password change)
-        const current = await prisma.user.findUnique({
-          where: { id: String(token.userId) },
-          select: { role: true, forcePasswordChange: true },
-        });
-        if (current) {
-          token.role = current.role;
-          token.forcePasswordChange = current.forcePasswordChange;
+        // Re-sync role/forcePasswordChange from DB at most once per minute.
+        // Without this TTL the jwt callback would hit the DB on every request,
+        // exhausting the connection pool under concurrent login/logout load.
+        const now = Date.now();
+        const TOKEN_SYNC_TTL_MS = 60_000;
+        if (!token.syncedAt || now - token.syncedAt > TOKEN_SYNC_TTL_MS) {
+          const current = await prisma.user.findUnique({
+            where: { id: String(token.userId) },
+            select: { role: true, forcePasswordChange: true },
+          });
+          if (current) {
+            token.role = current.role;
+            token.forcePasswordChange = current.forcePasswordChange;
+            token.syncedAt = now;
+          }
         }
       }
       return token;
@@ -141,8 +149,9 @@ export const authOptions: AuthOptions = {
   },
 };
 
-export function getCurrentSession() {
-  return getServerSession(authOptions);
-}
+// cache() deduplicates calls within a single server render pass so multiple
+// server components on the same page share one session lookup instead of each
+// triggering a separate JWT callback execution.
+export const getCurrentSession = cache(() => getServerSession(authOptions));
 
 export { hash };
