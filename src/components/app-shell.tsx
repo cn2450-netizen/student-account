@@ -25,7 +25,7 @@ export function AppShell({
         <div className="mx-auto flex w-full max-w-screen-2xl items-center justify-between px-4 py-3">
           <div>
             <h1 className="text-lg font-semibold tracking-tight text-cyan-300">
-              WWT Student Account Tracker - this is a test
+              WWT Student Account Tracker
             </h1>
             <p className="text-xs text-slate-400">Fundraising &amp; expense management</p>
           </div>
