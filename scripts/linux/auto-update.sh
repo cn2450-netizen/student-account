@@ -54,6 +54,9 @@ command -v npm >/dev/null || { err "npm not found."; exit 1; }
 # ── Fetch remote refs (network-only, no working tree change yet) ─────────────
 # GIT_SSL_NO_VERIFY bypasses TLS inspection on corporate proxies for git operations.
 export GIT_SSL_NO_VERIFY=true
+# Git 2.35+ blocks operations on directories owned by a different user.
+# The updater runs as root but the app dir is owned by the app user — mark it safe.
+git config --global --add safe.directory "${APP_DIR}" 2>/dev/null || true
 log "Fetching remote refs"
 if ! git -C "${APP_DIR}" fetch origin "${BRANCH}" --quiet 2>>"${LOG_FILE}"; then
   log "git fetch failed (network issue or rate limit) — skipping this cycle."
