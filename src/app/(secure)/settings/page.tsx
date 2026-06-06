@@ -1,24 +1,34 @@
 import Link from "next/link";
 import { requirePermission } from "@/lib/secure-page";
+import { can } from "@/lib/rbac";
 
 export default async function SettingsPage() {
-  await requirePermission("settings");
+  const user = await requirePermission("settings");
 
   const cards = [
     {
       href: "/settings/users",
       title: "User Accounts",
       description: "View all users, reset passwords, and manage roles.",
+      visible: true,
     },
     {
       href: "/settings/rbac",
       title: "Permissions",
       description: "Overview of role-based access control for each user role.",
+      visible: true,
     },
     {
       href: "/settings/ssl",
       title: "SSL Certificate",
       description: "View SSL certificate details and manage HTTPS settings.",
+      visible: true,
+    },
+    {
+      href: "/admin/locked-accounts",
+      title: "Locked Accounts",
+      description: "View and unlock permanently locked user accounts.",
+      visible: can(user.role, "unlockAccounts"),
     },
   ];
 
@@ -27,7 +37,7 @@ export default async function SettingsPage() {
       <h2 className="text-xl font-semibold text-slate-100">Settings</h2>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {cards.map((card) => (
+        {cards.filter((c) => c.visible).map((card) => (
           <Link
             key={card.href}
             href={card.href}

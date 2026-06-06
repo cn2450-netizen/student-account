@@ -5,7 +5,6 @@ type NavEntry = {
   href: string;
   label: string;
   visible: boolean;
-  subItem?: boolean;
 };
 
 export function AppShell({
@@ -42,25 +41,15 @@ export function AppShell({
           <nav className="space-y-1">
             {nav
               .filter((n) => n.visible)
-              .map((item) =>
-                item.subItem ? (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className="block rounded-lg py-1.5 pl-6 pr-3 text-xs text-slate-400 transition hover:bg-slate-800 hover:text-cyan-300"
-                  >
-                    {item.label}
-                  </Link>
-                ) : (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className="block rounded-lg px-3 py-2 text-sm text-slate-300 transition hover:bg-slate-800 hover:text-cyan-300"
-                  >
-                    {item.label}
-                  </Link>
-                )
-              )}
+              .map((item) => (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className="block rounded-lg px-3 py-2 text-sm text-slate-300 transition hover:bg-slate-800 hover:text-cyan-300"
+                >
+                  {item.label}
+                </Link>
+              ))}
           </nav>
           <div className="mt-3 border-t border-slate-800 pt-3">
             <SignOutButton />

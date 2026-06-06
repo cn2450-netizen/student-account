@@ -29,7 +29,6 @@ export default async function SecureLayout({ children }: { children: React.React
     { href: "/admin/fund-requests",    label: "Fund Requests",       visible: isTreasurer || isPresident },
     { href: "/admin/approvals",        label: "Account Approvals",   visible: isAdmin || isTreasurer || isPresident },
     { href: "/settings",               label: "Settings",            visible: canSettings },
-    { href: "/admin/locked-accounts",  label: "Locked Accounts",     visible: canUnlock, subItem: true },
   ];
 
   return (
