@@ -78,7 +78,8 @@ printf "    • Node.js 22 (via NodeSource)\n"
 printf "    • PostgreSQL (service + app database)\n"
 printf "    • nginx (reverse proxy, HTTP → HTTPS redirect, self-signed cert)\n"
 printf "    • Moneyfinder app (systemd service on port 3000)\n"
-printf "    • SSL helper (/usr/local/bin/moneyfinder-ssl-install)\n\n"
+printf "    • SSL helper (/usr/local/bin/moneyfinder-ssl-install)\n"
+printf "    • Auto-update service (systemd timer, checks GitHub every 15 min)\n\n"
 
 # ── Collect configuration ─────────────────────────────────────────────────────
 section "Configuration"
@@ -88,7 +89,14 @@ DEFAULT_USER="${SUDO_USER:-${USER}}"
 
 # Default: app files live alongside this script
 APP_SOURCE="${APP_SOURCE:-${SCRIPT_DIR}}"
-[[ -f "${APP_SOURCE}/package.json" ]] || die "package.json not found in '${APP_SOURCE}'. Place app files next to this script or set APP_SOURCE=/path/to/app."
+# GITHUB_REPO can be set to clone directly instead of rsync from a local source.
+# When set, APP_SOURCE is not required and auto-updates will be enabled automatically.
+GITHUB_REPO="${GITHUB_REPO:-cn2450-netizen/student-account}"
+UPDATE_BRANCH="${UPDATE_BRANCH:-master}"
+
+if [[ -z "${GITHUB_REPO:-}" ]]; then
+  [[ -f "${APP_SOURCE}/package.json" ]] || die "package.json not found in '${APP_SOURCE}'. Place app files next to this script or set APP_SOURCE=/path/to/app."
+fi
 
 APP_USER="${APP_USER:-}"
 ask APP_USER "App service account username" "${DEFAULT_USER}"
@@ -112,14 +120,23 @@ fi
 NEXTAUTH_URL="${NEXTAUTH_URL:-https://${APP_HOST}}"
 NEXTAUTH_SECRET="${NEXTAUTH_SECRET:-$(openssl rand -hex 32)}"
 
+# Auto-update check interval in minutes (default 15, min 5)
+UPDATE_INTERVAL_MIN="${UPDATE_INTERVAL_MIN:-15}"
+[[ "${UPDATE_INTERVAL_MIN}" -lt 5 ]] && UPDATE_INTERVAL_MIN=5
+
 printf "\n  ${GREEN}Configuration summary:${RESET}\n"
-printf "    Source dir  : %s\n" "${APP_SOURCE}"
-  printf "    App user    : %s\n" "${APP_USER}"
+if [[ -n "${GITHUB_REPO:-}" ]]; then
+  printf "    GitHub repo : %s (%s)\n" "${GITHUB_REPO}" "${UPDATE_BRANCH}"
+else
+  printf "    Source dir  : %s\n" "${APP_SOURCE}"
+fi
+printf "    App user    : %s\n" "${APP_USER}"
 printf "    Install dir : %s\n" "${APP_DIR}"
 printf "    Host        : %s\n" "${APP_HOST}"
 printf "    DB name     : %s\n" "${DB_NAME}"
 printf "    DB user     : %s\n" "${DB_USER}"
 printf "    NEXTAUTH_URL: %s\n" "${NEXTAUTH_URL}"
+printf "    Auto-update : every %s min\n" "${UPDATE_INTERVAL_MIN}"
 printf "\n"
 read -r -p "  Proceed with install? [Y/n]: " confirm
 [[ "${confirm,,}" == "n" ]] && { info "Aborted."; exit 0; }
@@ -241,16 +258,33 @@ else
   ok "User '${APP_USER}' created"
 fi
 
-info "Copying app files from ${APP_SOURCE} to ${APP_DIR}"
-as_root mkdir -p "${APP_DIR}"
-as_root rsync -a --delete \
-  --exclude '.git' \
-  --exclude 'node_modules' \
-  --exclude '.next' \
-  --exclude '.env' \
-  "${APP_SOURCE}/" "${APP_DIR}/"
+if [[ -n "${GITHUB_REPO:-}" ]]; then
+  info "Cloning https://github.com/${GITHUB_REPO}.git → ${APP_DIR}"
+  # Remove stale directory so git clone can write cleanly (preserves .env if it exists elsewhere)
+  if [[ -d "${APP_DIR}/.git" ]]; then
+    warn "${APP_DIR} is already a git repo — pulling latest instead of cloning"
+    git -C "${APP_DIR}" fetch origin "${UPDATE_BRANCH}"
+    git -C "${APP_DIR}" reset --hard "origin/${UPDATE_BRANCH}"
+  else
+    as_root rm -rf "${APP_DIR}"
+    # -k bypasses SSL for corporate TLS-inspection proxies
+    GIT_SSL_NO_VERIFY=true as_root git clone \
+      "https://github.com/${GITHUB_REPO}.git" "${APP_DIR}" \
+      || die "git clone failed. Check network access to GitHub."
+    as_root git -C "${APP_DIR}" checkout "${UPDATE_BRANCH}" 2>/dev/null || true
+  fi
+else
+  info "Copying app files from ${APP_SOURCE} to ${APP_DIR}"
+  as_root mkdir -p "${APP_DIR}"
+  as_root rsync -a --delete \
+    --exclude '.git' \
+    --exclude 'node_modules' \
+    --exclude '.next' \
+    --exclude '.env' \
+    "${APP_SOURCE}/" "${APP_DIR}/"
+fi
 as_root chown -R "${APP_USER}:${APP_USER}" "${APP_DIR}"
-ok "Files copied"
+ok "Files in place"
 
 # ── 5. .env + build ───────────────────────────────────────────────────────────
 section "5 / 7 — Environment & Build"
@@ -548,6 +582,66 @@ else
   warn "Service did not start cleanly. Check: sudo systemctl status moneyfinder --no-pager"
 fi
 
+# ── 8. Auto-update service ───────────────────────────────────────────────────
+section "8 / 8 — Auto-Update Service"
+
+install_auto_updater() {
+  local UPDATER_BIN="/usr/local/bin/moneyfinder-auto-update"
+  local UPDATER_SVC="/etc/systemd/system/moneyfinder-updater.service"
+  local UPDATER_TMR="/etc/systemd/system/moneyfinder-updater.timer"
+  local INTERVAL_SEC=$(( UPDATE_INTERVAL_MIN * 60 ))
+
+  info "Installing auto-update script to ${UPDATER_BIN}"
+  as_root install -m 0755 -o root -g root \
+    "${APP_DIR}/scripts/linux/auto-update.sh" "${UPDATER_BIN}"
+
+  info "Writing systemd service unit"
+  as_root tee "${UPDATER_SVC}" >/dev/null <<SVCEOF
+[Unit]
+Description=Moneyfinder Auto-Update Check
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Environment=APP_DIR=${APP_DIR}
+Environment=UPDATE_BRANCH=${UPDATE_BRANCH}
+ExecStart=${UPDATER_BIN}
+StandardOutput=append:/var/log/moneyfinder/auto-update.log
+StandardError=append:/var/log/moneyfinder/auto-update.log
+SVCEOF
+
+  info "Writing systemd timer unit (interval: ${UPDATE_INTERVAL_MIN} min)"
+  as_root tee "${UPDATER_TMR}" >/dev/null <<TMREOF
+[Unit]
+Description=Check for Moneyfinder updates every ${UPDATE_INTERVAL_MIN} minutes
+After=network-online.target
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=${INTERVAL_SEC}
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+TMREOF
+
+  as_root systemctl daemon-reload
+  as_root systemctl enable --now moneyfinder-updater.timer
+  ok "Auto-update timer enabled (next check: ~${UPDATE_INTERVAL_MIN} min after boot)"
+}
+
+if [[ -z "${GITHUB_REPO:-}" ]]; then
+  warn "GITHUB_REPO is not set — auto-update service will not be installed."
+  warn "To enable later: set GITHUB_REPO=${GITHUB_REPO:-owner/repo} and re-run this script."
+elif [[ ! -d "${APP_DIR}/.git" ]]; then
+  warn "APP_DIR is not a git repository — auto-update service will not be installed."
+  warn "Re-run with GITHUB_REPO set to enable auto-updates."
+else
+  install_auto_updater
+fi
+
 # ── Summary ───────────────────────────────────────────────────────────────────
 section "Install Complete"
 
@@ -556,6 +650,10 @@ printf "  %-20s %s\n" "App directory:"   "${APP_DIR}"
 printf "  %-20s %s\n" "Service:"         "moneyfinder  (systemctl)"
 printf "  %-20s %s\n" "HTTP (redirect):" "http://${APP_HOST}"
 printf "  %-20s %s\n" "HTTPS (app):"     "https://${APP_HOST}"
+if [[ -n "${GITHUB_REPO:-}" ]] && [[ -d "${APP_DIR}/.git" ]]; then
+  printf "  %-20s every %s min (tracking %s/%s)\n" \
+    "Auto-update:" "${UPDATE_INTERVAL_MIN}" "${GITHUB_REPO}" "${UPDATE_BRANCH}"
+fi
 printf "\n"
 printf "  ${YELLOW}Note:${RESET} A self-signed certificate is in place. The browser will show a\n"
 printf "  security warning until you upload a trusted cert via Settings -> SSL.\n\n"
@@ -563,4 +661,10 @@ printf "  Useful commands:\n"
 printf "    sudo systemctl status moneyfinder --no-pager\n"
 printf "    sudo systemctl status nginx --no-pager\n"
 printf "    sudo journalctl -u moneyfinder -f\n"
-printf "    curl -Ik https://127.0.0.1\n\n"
+printf "    curl -Ik https://127.0.0.1\n"
+if [[ -n "${GITHUB_REPO:-}" ]] && [[ -d "${APP_DIR}/.git" ]]; then
+  printf "    sudo systemctl status moneyfinder-updater.timer --no-pager\n"
+  printf "    sudo journalctl -u moneyfinder-updater -f\n"
+  printf "    sudo /usr/local/bin/moneyfinder-auto-update   # trigger update now\n"
+fi
+printf "\n"

@@ -59,6 +59,15 @@ read -r -p "  Apply update? [Y/n]: " confirm
 
 # ── 1. Stop service ───────────────────────────────────────────────────────────
 section "1 / 4 — Stopping Service"
+
+# Pause auto-update timer so it doesn't race with this manual update
+UPDATER_WAS_ACTIVE=false
+if as_root systemctl is-active --quiet moneyfinder-updater.timer 2>/dev/null; then
+  as_root systemctl stop moneyfinder-updater.timer
+  UPDATER_WAS_ACTIVE=true
+  ok "Auto-update timer paused"
+fi
+
 if as_root systemctl is-active --quiet moneyfinder 2>/dev/null; then
   as_root systemctl stop moneyfinder
   ok "Service stopped"
@@ -150,11 +159,26 @@ if as_root systemctl is-active --quiet moneyfinder; then
   ok "moneyfinder is running"
 else
   warn "Service did not start cleanly. Check: sudo systemctl status moneyfinder --no-pager"
+  # Resume timer even on failure so auto-updates keep working
+  "${UPDATER_WAS_ACTIVE}" && as_root systemctl start moneyfinder-updater.timer
   exit 1
+fi
+
+# Resume auto-update timer
+if "${UPDATER_WAS_ACTIVE}"; then
+  # Refresh the updater binary in case scripts/linux/auto-update.sh was updated
+  if [[ -f "${APP_DIR}/scripts/linux/auto-update.sh" ]]; then
+    as_root install -m 0755 -o root -g root \
+      "${APP_DIR}/scripts/linux/auto-update.sh" "/usr/local/bin/moneyfinder-auto-update"
+    ok "Auto-update script refreshed"
+  fi
+  as_root systemctl start moneyfinder-updater.timer
+  ok "Auto-update timer resumed"
 fi
 
 section "Update Complete"
 printf "  ${GREEN}${BOLD}Update applied successfully.${RESET}\n\n"
 printf "  Useful commands:\n"
 printf "    sudo systemctl status moneyfinder --no-pager\n"
-printf "    sudo journalctl -u moneyfinder -f\n\n"
+printf "    sudo journalctl -u moneyfinder -f\n"
+printf "    sudo journalctl -u moneyfinder-updater -f\n\n"
