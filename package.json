@@ -1,0 +1,54 @@
+{
+  "name": "student-account",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "node ./node_modules/next/dist/bin/next dev",
+    "build": "node ./node_modules/next/dist/bin/next build",
+    "start": "node ./node_modules/next/dist/bin/next start",
+    "lint": "node ./node_modules/eslint/bin/eslint.js",
+    "db:up": "docker compose up -d postgres",
+    "db:down": "docker compose down",
+    "db:logs": "docker compose logs -f postgres",
+    "db:wait": "node ./scripts/wait-for-postgres.mjs",
+    "db:ensure": "node ./scripts/ensure-postgres-db.mjs",
+    "db:generate": "node --use-system-ca ./node_modules/prisma/build/index.js generate",
+    "db:migrate": "node --use-system-ca ./node_modules/prisma/build/index.js migrate dev",
+    "db:push": "node --use-system-ca ./node_modules/prisma/build/index.js db push",
+    "db:seed": "node --use-system-ca ./node_modules/prisma/build/index.js db seed",
+    "db:init:docker": "node ./scripts/run-npm-chain.mjs db:up db:wait db:ensure db:push db:seed",
+    "db:init": "node ./scripts/db-init-auto.mjs",
+    "deploy:local": "node ./scripts/run-npm-chain.mjs db:init build",
+    "deploy:wsl": "wsl bash \"/mnt/c/Scripts/student account/scripts/linux/upgrade-student-account.sh\"",
+    "deploy:wsl:install": "wsl bash \"/mnt/c/Scripts/student account/scripts/linux/install-student-account.sh\""
+  },
+  "dependencies": {
+    "@prisma/adapter-pg": "^7.8.0",
+    "@prisma/client": "^7.8.0",
+    "bcryptjs": "^3.0.3",
+    "next": "16.2.6",
+    "next-auth": "^4.24.14",
+    "pg": "^8.21.0",
+    "prisma": "^7.8.0",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/node": "^20",
+    "@types/pg": "^8.11.13",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "enhanced-resolve": "^5.22.1",
+    "eslint": "^9",
+    "eslint-config-next": "16.2.6",
+    "tailwindcss": "^4",
+    "tsx": "^4.22.3",
+    "typescript": "^5"
+  },
+  "prisma": {
+    "seed": "node ./node_modules/tsx/dist/cli.mjs prisma/seed.ts"
+  }
+}

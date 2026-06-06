@@ -1,0 +1,149 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── Enums ───────────────────────────────────────────────────────────────────
+
+enum AccountRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// ─── Admin / Staff users ──────────────────────────────────────────────────────
+
+model User {
+  id                  String         @id @default(cuid())
+  username            String         @unique
+  passwordHash        String
+  role                String         @default("PARENT")
+  forcePasswordChange Boolean        @default(false)
+  passwordChangedAt   DateTime?
+  // Account lockout
+  loginAttempts       Int            @default(0)
+  loginWindowStart    DateTime?
+  lockedUntil         DateTime?
+  lockoutCount        Int            @default(0)
+  permanentLock       Boolean        @default(false)
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+  profile             ParentProfile?
+}
+
+// ─── Parent profile (linked 1-to-1 with a User after approval) ───────────────
+
+model ParentProfile {
+  id        String    @id @default(cuid())
+  userId    String    @unique
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  firstName String
+  lastName  String
+  phone     String
+  createdAt DateTime  @default(now())
+  students  Student[]
+}
+// ─── Account registration queue ──────────────────────────────────────────────
+
+model AccountRequest {
+  id              String               @id @default(cuid())
+  firstName       String
+  lastName        String
+  phone           String
+  email           String               @unique
+  passwordHash    String?
+  status          AccountRequestStatus @default(PENDING)
+  assignedTo      String?
+  reviewedAt      DateTime?
+  reviewedBy      String?
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+}
+
+// ─── Students ────────────────────────────────────────────────────────────────
+
+model Student {
+  id          String        @id @default(cuid())
+  firstName   String
+  lastName    String
+  grade       String?
+  graduated           Boolean   @default(false)
+  graduatedAt         DateTime?
+  transferApproved    Boolean   @default(false)
+  transferApprovedAt  DateTime?
+  transferApprovedBy  String?
+  transferNotes       String?
+  profileId   String
+  profile     ParentProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  createdAt    DateTime           @default(now())
+  fundraising  FundraisingEntry[]
+  expenses     ExpenseEntry[]
+  fundRequests FundRequest[]
+}
+
+// ─── App configuration (key/value) ───────────────────────────────────────────
+
+model AppConfig {
+  key   String @id
+  value String
+}
+
+// ─── Fundraisers (vendor/campaign definitions) ───────────────────────────────
+
+model Fundraiser {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+}
+
+// ─── Fundraising entries ─────────────────────────────────────────────────────
+
+model FundraisingEntry {
+  id          String   @id @default(cuid())
+  studentId   String
+  student     Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  amount      Decimal  @db.Decimal(10, 2)
+  description String
+  date        DateTime @default(now())
+  createdAt   DateTime @default(now())
+}
+
+// ─── Expense entries ─────────────────────────────────────────────────────────
+
+model ExpenseEntry {
+  id          String   @id @default(cuid())
+  studentId   String
+  student     Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  amount      Decimal  @db.Decimal(10, 2)
+  description String
+  date        DateTime @default(now())
+  createdAt   DateTime @default(now())
+}
+
+// ─── Fund requests (parent → treasurer approval) ─────────────────────────────
+
+enum FundRequestStatus {
+  PENDING
+  APPROVED
+  DENIED
+}
+
+model FundRequest {
+  id          String            @id @default(cuid())
+  studentId   String
+  student     Student           @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  description String
+  amount      Decimal           @db.Decimal(10, 2)
+  status      FundRequestStatus @default(PENDING)
+  notes       String?           // reviewer notes or denial reason
+  requestedAt DateTime          @default(now())
+  reviewedAt  DateTime?
+  reviewedBy  String?
+  createdAt   DateTime          @default(now())
+}
