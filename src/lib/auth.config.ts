@@ -1,5 +1,3 @@
-import type { NextAuthConfig } from "next-auth";
-
 // Edge-safe config — no Prisma, no Node.js-only imports.
 // Used by middleware for JWT verification. auth.ts extends this with the
 // full Credentials provider and DB-backed jwt callback (Node.js only).
@@ -18,4 +16,4 @@ export const authConfig = {
       return session;
     },
   },
-} satisfies NextAuthConfig;
+};
