@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
+import { NEXTAUTH_SECRET } from "@/lib/env";
 
 export async function applyAuthGuard(req: NextRequest): Promise<NextResponse> {
   const { pathname } = req.nextUrl;
-  const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
+  const token = await getToken({ req, secret: NEXTAUTH_SECRET });
 
   if (!token) {
     const loginUrl = new URL("/login", req.url);

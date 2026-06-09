@@ -2,6 +2,7 @@ import { cache } from "react";
 import { compare, hash } from "bcryptjs";
 import { type AuthOptions, getServerSession } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
+import "@/lib/env"; // validates NEXTAUTH_SECRET at startup
 
 import { prisma } from "@/lib/prisma";
 
