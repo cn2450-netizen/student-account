@@ -13,11 +13,9 @@ A web application for tracking student fundraising and expenses. Parents create 
 
 ## Default Admin Account
 
-| Username | Password |
-|----------|----------|
-| `admin`  | `admin`  |
+The admin account username is `admin`. The password is randomly generated at install time and printed in the installer summary and the seed output. You will be prompted to set a new password on first login.
 
-> The admin password **must** be changed on first login before the application can be used.
+For local development (`npm run db:seed`), the password is also randomly generated and printed to the console. You can override it by setting `ADMIN_PASSWORD` in your environment before running the seed.
 
 ## Quick Start
 
@@ -52,7 +50,7 @@ npm run dev
 
 Navigate to **http://localhost:3000**
 
-- Log in as `admin` / `admin` and set a new password.
+- Log in as `admin` with the password printed during the seed step, then set a new password.
 - Parents can register via the **Create Account** button on the login page.
 - Approve pending accounts at **Account Approvals** in the admin navigation.
 

@@ -1,3 +1,4 @@
+import { randomBytes } from "crypto";
 import { hash } from "bcryptjs";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../src/generated/prisma/client";
@@ -10,13 +11,14 @@ const adapter = new PrismaPg({ connectionString });
 const prisma = new PrismaClient({ adapter });
 
 async function seedAdmin() {
-  const passwordHash = await hash("admin", 10);
+  const adminPassword = process.env.ADMIN_PASSWORD || randomBytes(12).toString("hex");
+  const passwordHash = await hash(adminPassword, 10);
+
+  const existing = await prisma.user.findUnique({ where: { username: "admin" } });
 
   await prisma.user.upsert({
     where: { username: "admin" },
-    update: {
-      role: "ADMIN",
-    },
+    update: { role: "ADMIN" },
     create: {
       username: "admin",
       passwordHash,
@@ -25,7 +27,12 @@ async function seedAdmin() {
     },
   });
 
-  console.log("Admin user seeded (username: admin, password: admin — change on first login).");
+  if (existing) {
+    console.log("Admin user already exists — role confirmed, password unchanged.");
+  } else {
+    console.log(`Admin user created — username: admin  password: ${adminPassword}`);
+    console.log("(You will be prompted to change this password on first login.)");
+  }
 }
 
 async function main() {

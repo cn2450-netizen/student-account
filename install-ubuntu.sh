@@ -10,6 +10,7 @@
 #    export APP_HOST=10.8.73.32
 #    export APP_USER=usfsadmin
 #    export DB_PASSWORD='MyStrongPass1!'
+#    export ADMIN_PASSWORD='MyAdminPass1!'
 #    export NEXTAUTH_SECRET="$(openssl rand -hex 32)"
 #    sudo -E bash install-ubuntu.sh
 #
@@ -119,6 +120,8 @@ fi
 
 NEXTAUTH_URL="${NEXTAUTH_URL:-https://${APP_HOST}}"
 NEXTAUTH_SECRET="${NEXTAUTH_SECRET:-$(openssl rand -hex 32)}"
+ADMIN_PASSWORD="${ADMIN_PASSWORD:-$(openssl rand -hex 12)}"
+export ADMIN_PASSWORD
 
 # Auto-update check interval in minutes (default 15, min 5)
 UPDATE_INTERVAL_MIN="${UPDATE_INTERVAL_MIN:-15}"
@@ -136,6 +139,7 @@ printf "    Host        : %s\n" "${APP_HOST}"
 printf "    DB name     : %s\n" "${DB_NAME}"
 printf "    DB user     : %s\n" "${DB_USER}"
 printf "    NEXTAUTH_URL: %s\n" "${NEXTAUTH_URL}"
+printf "    Admin pw    : %s  (first-install only)\n" "${ADMIN_PASSWORD}"
 printf "    Auto-update : every %s min\n" "${UPDATE_INTERVAL_MIN}"
 printf "\n"
 read -r -p "  Proceed with install? [Y/n]: " confirm
@@ -656,6 +660,12 @@ if [[ -n "${GITHUB_REPO:-}" ]] && [[ -d "${APP_DIR}/.git" ]]; then
     "Auto-update:" "${UPDATE_INTERVAL_MIN}" "${GITHUB_REPO}" "${UPDATE_BRANCH}"
 fi
 printf "\n"
+printf "  ${BOLD}First-time login credentials:${RESET}\n"
+printf "  %-20s %s\n" "Admin username:" "admin"
+printf "  %-20s %s\n" "Admin password:" "${ADMIN_PASSWORD}"
+printf "  ${YELLOW}Note:${RESET} The password above applies to first install only.\n"
+printf "  If admin already existed the password was not changed.\n"
+printf "  You will be prompted to set a new password on first login.\n\n"
 printf "  ${YELLOW}Note:${RESET} A self-signed certificate is in place. The browser will show a\n"
 printf "  security warning until you upload a trusted cert via Settings -> SSL.\n\n"
 printf "  Useful commands:\n"

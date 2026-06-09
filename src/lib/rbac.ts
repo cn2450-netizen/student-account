@@ -14,7 +14,7 @@ export type Permission =
 const ROLE_PERMISSIONS: Record<string, Permission[]> = {
   ADMIN:                ["admin", "settings", "approvals", "allStudents", "allFunds", "fundRequests", "manageFundraising", "ownStudents", "ownFunds", "unlockAccounts"],
   PRESIDENT:            ["settings", "approvals", "allStudents", "allFunds", "fundRequests", "unlockAccounts"],
-  TREASURER:            ["approvals", "allStudents", "allFunds", "fundRequests"],
+  TREASURER:            ["approvals", "allStudents", "allFunds", "fundRequests", "manageFundraising"],
   FUNDRAISING_MANAGER:  ["allStudents", "manageFundraising"],
   BOARD_MEMBER:         ["allStudents"],
   PARENT:               ["ownStudents", "ownFunds", "submitRequests"],
