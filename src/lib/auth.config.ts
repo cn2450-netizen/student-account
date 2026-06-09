@@ -6,6 +6,7 @@ import type { JWT } from "next-auth/jwt";
 // full Credentials provider and DB-backed jwt callback (Node.js only).
 export const authConfig = {
   secret: process.env.NEXTAUTH_SECRET,
+  trustHost: true,
   session: { strategy: "jwt" as const },
   pages: { signIn: "/login" },
   providers: [],

@@ -11,7 +11,7 @@ export function applyAuthGuard(req: NextRequest, session: Session | null): NextR
     return NextResponse.redirect(loginUrl);
   }
 
-  if (session.user.forcePasswordChange && pathname !== "/change-password") {
+  if (session?.user?.forcePasswordChange && pathname !== "/change-password") {
     return NextResponse.redirect(new URL("/change-password", req.url));
   }
 
