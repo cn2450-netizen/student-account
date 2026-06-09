@@ -19,34 +19,46 @@ For local development (`npm run db:seed`), the password is also randomly generat
 
 ## Quick Start
 
-### Prerequisites
-- Node.js 20+
-- Docker (or a local PostgreSQL 16 instance)
+### Production install (Ubuntu server)
 
-### 1. Copy the environment file
+```bash
+sudo bash install-ubuntu.sh
+```
+
+The script installs Node.js, PostgreSQL, nginx, and the app as a systemd service. It generates a random DB password and admin password, prints them in the install summary, and writes `.env` automatically. See the script header for all overridable environment variables.
+
+### Manual local setup
+
+#### Prerequisites
+- Node.js 20+
+- PostgreSQL 16 instance (local or remote)
+
+#### 1. Copy the environment file
 
 ```bash
 cp .env.example .env
 ```
 
-Edit `.env` and set `NEXTAUTH_SECRET` to a random 32+ character string.
+Edit `.env` — set `DATABASE_URL` to your Postgres connection string and `NEXTAUTH_SECRET` to a random 32+ character string (`openssl rand -hex 32`).
 
-### 2. Initialize the database and build
+#### 2. Push schema, seed, and build
 
 ```bash
-npm run db:init        # starts Docker Postgres, creates DB, pushes schema, seeds admin
-npm run build          # production build
-npm start              # start on port 3000
+npm run db:push    # apply schema to database
+npm run db:seed    # create admin user (password printed to console)
+npm run build      # production build
+npm start          # start on port 3000
 ```
 
 Or for development:
 
 ```bash
-npm run db:init
+npm run db:push
+npm run db:seed
 npm run dev
 ```
 
-### 3. Open the app
+#### 3. Open the app
 
 Navigate to **http://localhost:3000**
 
@@ -69,9 +81,8 @@ Navigate to **http://localhost:3000**
 | `npm run dev` | Development server |
 | `npm run build` | Production build |
 | `npm start` | Start production server |
-| `npm run db:up` | Start Docker Postgres container |
-| `npm run db:down` | Stop Docker Postgres container |
-| `npm run db:push` | Push schema to database |
+| `npm run db:generate` | Regenerate Prisma client after schema changes |
+| `npm run db:push` | Push schema changes to database |
 | `npm run db:seed` | Seed admin user |
-| `npm run db:init` | Full DB init (auto-detects Docker) |
-| `npm run deploy:local` | DB init + production build |
+| `npm test` | Run unit tests |
+| `npm run test:watch` | Run tests in watch mode |
