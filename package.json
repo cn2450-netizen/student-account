@@ -18,7 +18,9 @@
     "db:seed": "node --use-system-ca ./node_modules/prisma/build/index.js db seed",
     "db:init:docker": "node ./scripts/run-npm-chain.mjs db:up db:wait db:ensure db:push db:seed",
     "db:init": "node ./scripts/db-init-auto.mjs",
-    "deploy:local": "node ./scripts/run-npm-chain.mjs db:init build"
+    "deploy:local": "node ./scripts/run-npm-chain.mjs db:init build",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.8.0",
@@ -44,7 +46,8 @@
     "eslint-config-next": "16.2.6",
     "tailwindcss": "^4",
     "tsx": "^4.22.3",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^3.0.0"
   },
   "prisma": {
     "seed": "node ./node_modules/tsx/dist/cli.mjs prisma/seed.ts"
