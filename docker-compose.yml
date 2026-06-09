@@ -5,14 +5,14 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_DB: student_account
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_USER: ${POSTGRES_USER:-student}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Run "npm run db:setup-creds" first to generate .env credentials}
     ports:
       - "5432:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d student_account"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-student} -d student_account"]
       interval: 5s
       timeout: 5s
       retries: 10
