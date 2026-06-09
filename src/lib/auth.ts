@@ -11,6 +11,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   pages: { signIn: "/login" },
   providers: [
     Credentials({
+      credentials: {
+        username: { label: "Username", type: "text" },
+        password: { label: "Password", type: "password" },
+      },
       async authorize(credentials) {
         const username = (credentials?.username as string | undefined)?.toLowerCase().trim();
         const password = credentials?.password as string | undefined;
