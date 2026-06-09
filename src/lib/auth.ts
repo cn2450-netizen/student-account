@@ -14,10 +14,38 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         username: { label: "Username", type: "text" },
         password: { label: "Password", type: "password" },
       },
-      async authorize(credentials) {
+      async authorize(credentials, request) {
         const username = (credentials?.username as string | undefined)?.toLowerCase().trim();
         const password = credentials?.password as string | undefined;
         if (!username || !password) return null;
+
+        // DB-backed IP rate limit: 10 attempts per 15-minute window.
+        // Persists across process restarts unlike the prior module-level Map.
+        const ip =
+          (request.headers.get("x-forwarded-for") ?? "").split(",")[0].trim() ||
+          request.headers.get("x-real-ip") ||
+          "unknown";
+        const IP_WINDOW_MS = 15 * 60 * 1000;
+        const IP_MAX_ATTEMPTS = 10;
+        const now = new Date();
+
+        const ipRecord = await prisma.ipRateLimit.findUnique({ where: { ip } });
+        const windowActive = !!ipRecord && ipRecord.resetAt > now;
+
+        if (windowActive && ipRecord!.count >= IP_MAX_ATTEMPTS) return null;
+
+        if (windowActive) {
+          await prisma.ipRateLimit.update({
+            where: { ip },
+            data: { count: { increment: 1 } },
+          });
+        } else {
+          await prisma.ipRateLimit.upsert({
+            where: { ip },
+            update: { count: 1, resetAt: new Date(now.getTime() + IP_WINDOW_MS) },
+            create: { ip, count: 1, resetAt: new Date(now.getTime() + IP_WINDOW_MS) },
+          });
+        }
 
         const user = await prisma.user.findUnique({ where: { username } });
         if (!user) return null;

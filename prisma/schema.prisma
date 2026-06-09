@@ -134,6 +134,14 @@ enum FundRequestStatus {
   DENIED
 }
 
+// ─── IP-based login rate limit (persisted across restarts) ──────────────────
+
+model IpRateLimit {
+  ip      String   @id
+  count   Int      @default(0)
+  resetAt DateTime
+}
+
 model FundRequest {
   id          String            @id @default(cuid())
   studentId   String

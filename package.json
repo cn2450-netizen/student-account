@@ -18,9 +18,7 @@
     "db:seed": "node --use-system-ca ./node_modules/prisma/build/index.js db seed",
     "db:init:docker": "node ./scripts/run-npm-chain.mjs db:up db:wait db:ensure db:push db:seed",
     "db:init": "node ./scripts/db-init-auto.mjs",
-    "deploy:local": "node ./scripts/run-npm-chain.mjs db:init build",
-    "deploy:wsl": "wsl bash \"/mnt/c/Scripts/student account/scripts/linux/upgrade-student-account.sh\"",
-    "deploy:wsl:install": "wsl bash \"/mnt/c/Scripts/student account/scripts/linux/install-student-account.sh\""
+    "deploy:local": "node ./scripts/run-npm-chain.mjs db:init build"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.8.0",
