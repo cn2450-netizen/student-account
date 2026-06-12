@@ -31,6 +31,12 @@ export default async function SettingsPage() {
       visible: can(user.role, "admin"),
     },
     {
+      href: "/settings/email",
+      title: "Email Notifications",
+      description: "Configure SMTP settings and templates for deposit receipts and account approvals.",
+      visible: true,
+    },
+    {
       href: "/admin/locked-accounts",
       title: "Locked Accounts",
       description: "View and unlock permanently locked user accounts.",

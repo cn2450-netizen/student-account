@@ -7,6 +7,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getCurrentSession } from "@/lib/auth";
 import { can } from "@/lib/rbac";
+import { sendDepositReceipt, sendApprovalEmail } from "@/lib/email";
 
 // ─── Change password on first login ─────────────────────────────────────────
 
@@ -166,6 +167,16 @@ export async function approveAccountRequest(requestId: string) {
   });
 
   revalidatePath("/admin/approvals");
+
+  const loginUrl = process.env.NEXTAUTH_URL ?? "";
+  try {
+    await sendApprovalEmail({
+      to: request.email,
+      parentName: `${request.firstName} ${request.lastName}`,
+      loginUrl,
+    });
+  } catch { /* email failure must not fail the approval */ }
+
   return { success: true };
 }
 
@@ -303,14 +314,34 @@ export async function addFundraisingEntry(
     }
   }
 
+  const entryDate = parsed.data.date ? new Date(parsed.data.date) : new Date();
+
   await prisma.fundraisingEntry.create({
     data: {
       studentId: parsed.data.studentId,
       amount: parsed.data.amount,
       description: parsed.data.description,
-      date: parsed.data.date ? new Date(parsed.data.date) : new Date(),
+      date: entryDate,
     },
   });
+
+  // Send deposit receipt to the student's parent
+  try {
+    const student = await prisma.student.findUnique({
+      where: { id: parsed.data.studentId },
+      include: { profile: { include: { user: { select: { username: true } } } } },
+    });
+    if (student?.profile) {
+      await sendDepositReceipt({
+        to: student.profile.user.username,
+        parentName: `${student.profile.firstName} ${student.profile.lastName}`,
+        studentName: `${student.firstName} ${student.lastName}`,
+        amount: Number(parsed.data.amount).toFixed(2),
+        description: parsed.data.description,
+        date: entryDate.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }),
+      });
+    }
+  } catch { /* email failure must not fail the fund entry */ }
 
   revalidatePath("/fundraising");
   return { success: true };
