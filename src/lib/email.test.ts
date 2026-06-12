@@ -5,7 +5,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     appConfig: { findMany: vi.fn() },
-    emailReceipt: { create: vi.fn() },
+    emailReceipt: { create: vi.fn(), deleteMany: vi.fn() },
   },
 }));
 
@@ -23,6 +23,7 @@ import {
   getEmailConfig,
   sendDepositReceipt,
   sendApprovalEmail,
+  purgeReceiptsOlderThan5Years,
   DEFAULT_DEPOSIT_SUBJECT,
   DEFAULT_DEPOSIT_BODY,
   DEFAULT_APPROVAL_SUBJECT,
@@ -324,5 +325,45 @@ describe("sendApprovalEmail()", () => {
 
     const { data } = vi.mocked(prisma.emailReceipt.create).mock.calls[0][0];
     expect(data.emailSent).toBe(true);
+  });
+});
+
+// ── purgeReceiptsOlderThan5Years() ────────────────────────────────────────────
+
+describe("purgeReceiptsOlderThan5Years()", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("calls deleteMany with a cutoff 5 years in the past", async () => {
+    vi.mocked(prisma.emailReceipt.deleteMany).mockResolvedValue({ count: 3 });
+
+    const before = new Date();
+    before.setFullYear(before.getFullYear() - 5);
+
+    await purgeReceiptsOlderThan5Years();
+
+    const call = vi.mocked(prisma.emailReceipt.deleteMany).mock.calls[0][0];
+    const cutoff: Date = (call as { where: { sentAt: { lt: Date } } }).where.sentAt.lt;
+
+    // Cutoff must be approximately 5 years ago (within 5 seconds of our reference)
+    const after = new Date();
+    after.setFullYear(after.getFullYear() - 5);
+    expect(cutoff.getTime()).toBeGreaterThanOrEqual(before.getTime() - 5000);
+    expect(cutoff.getTime()).toBeLessThanOrEqual(after.getTime() + 5000);
+  });
+
+  it("returns the number of deleted records", async () => {
+    vi.mocked(prisma.emailReceipt.deleteMany).mockResolvedValue({ count: 7 });
+
+    const result = await purgeReceiptsOlderThan5Years();
+
+    expect(result).toBe(7);
+  });
+
+  it("returns 0 when no records are old enough to purge", async () => {
+    vi.mocked(prisma.emailReceipt.deleteMany).mockResolvedValue({ count: 0 });
+
+    const result = await purgeReceiptsOlderThan5Years();
+
+    expect(result).toBe(0);
   });
 });

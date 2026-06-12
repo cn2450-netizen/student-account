@@ -145,6 +145,15 @@ export async function sendApprovalEmail(opts: {
   });
 }
 
+export async function purgeReceiptsOlderThan5Years(): Promise<number> {
+  const cutoff = new Date();
+  cutoff.setFullYear(cutoff.getFullYear() - 5);
+  const result = await prisma.emailReceipt.deleteMany({
+    where: { sentAt: { lt: cutoff } },
+  });
+  return result.count;
+}
+
 export async function sendTestEmail(to: string) {
   const cfg = await getEmailConfig();
   if (!cfg.host || !cfg.from) throw new Error("SMTP not configured");

@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { requireAuth } from "@/lib/secure-page";
 import { can } from "@/lib/rbac";
 import { prisma } from "@/lib/prisma";
+import { purgeReceiptsOlderThan5Years } from "@/lib/email";
 
 const CURRENT_YEAR = new Date().getFullYear();
 const YEARS = Array.from({ length: 6 }, (_, i) => CURRENT_YEAR - i);
@@ -36,6 +37,13 @@ export default async function ReceiptsPage({
     .reduce((sum, r) => sum + Number(r.amount), 0);
 
   const exportUrl = `/api/receipts/export?year=${year}${typeFilter !== "all" ? `&type=${typeFilter}` : ""}`;
+  const canPurge = can(user.role, "settings");
+
+  async function runPurge() {
+    "use server";
+    await purgeReceiptsOlderThan5Years();
+    redirect(`/admin/receipts?year=${year}&type=${typeFilter}`);
+  }
 
   return (
     <div className="space-y-6">
@@ -175,9 +183,22 @@ export default async function ReceiptsPage({
         )}
       </div>
 
-      <p className="text-xs text-slate-600">
-        Receipts are retained for 5 years. Records shown: {receipts.length}.
-      </p>
+      <div className="flex items-center justify-between">
+        <p className="text-xs text-slate-600">
+          Receipts are retained for 5 years. Records shown: {receipts.length}.
+        </p>
+        {canPurge && (
+          <form action={runPurge}>
+            <button
+              type="submit"
+              className="text-xs text-rose-500 hover:text-rose-400 transition"
+              title="Permanently delete receipt records older than 5 years"
+            >
+              Purge records older than 5 years
+            </button>
+          </form>
+        )}
+      </div>
     </div>
   );
 }
