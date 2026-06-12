@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { advanceGrades } from "@/app/actions";
 
-export function AdvanceGradesButton() {
+export function AdvanceGradesButton({ advancementDate = "July 1" }: { advancementDate?: string }) {
   const [result, setResult] = useState<{
     advanced?: number;
     graduated?: number;
@@ -41,7 +41,7 @@ export function AdvanceGradesButton() {
           ? "Advancing grades…"
           : confirmed
           ? "Confirm — advance all grades now"
-          : "Advance Grades (July 1 rollover)"}
+          : `Advance Grades (${advancementDate} rollover)`}
       </button>
 
       {confirmed && !isPending && (

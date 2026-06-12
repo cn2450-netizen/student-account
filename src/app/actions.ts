@@ -678,15 +678,21 @@ export async function advanceGrades(
 
   const now = new Date();
   const currentYear = now.getFullYear();
-  // Advancement is valid on or after July 1 of the current year
-  const advancementDate = new Date(currentYear, 6, 1); // month is 0-indexed
+
+  const [dateConfig, yearConfig] = await Promise.all([
+    prisma.appConfig.findUnique({ where: { key: "gradeAdvancementDate" } }),
+    prisma.appConfig.findUnique({ where: { key: "gradeAdvancementYear" } }),
+  ]);
+
+  const [configMonth, configDay] = (dateConfig?.value ?? "7/1").split("/").map(Number);
+  const advancementDate = new Date(currentYear, configMonth - 1, configDay);
+  const advancementLabel = advancementDate.toLocaleDateString("en-US", { month: "long", day: "numeric" });
+
   if (!force && now < advancementDate) {
-    return { skipped: `Grade advancement runs on or after July 1. Current date is ${now.toLocaleDateString()}.` };
+    return { skipped: `Grade advancement runs on or after ${advancementLabel}. Current date is ${now.toLocaleDateString()}.` };
   }
 
-  // Check if already run this year
-  const config = await prisma.appConfig.findUnique({ where: { key: "gradeAdvancementYear" } });
-  if (!force && config?.value === String(currentYear)) {
+  if (!force && yearConfig?.value === String(currentYear)) {
     return { skipped: `Grades have already been advanced for ${currentYear}.` };
   }
 

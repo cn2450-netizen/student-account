@@ -6,7 +6,7 @@ import { AdvanceGradesButton } from "@/components/advance-grades-button";
 export default async function AdminGraduatedPage() {
   await requirePermission("fundRequests");
 
-  const [raw, lastAdvancement] = await Promise.all([
+  const [raw, lastAdvancement, dateConfig] = await Promise.all([
     prisma.student.findMany({
       where: { graduated: true },
       include: {
@@ -17,7 +17,14 @@ export default async function AdminGraduatedPage() {
       orderBy: [{ transferApproved: "asc" }, { graduatedAt: "desc" }],
     }),
     prisma.appConfig.findUnique({ where: { key: "gradeAdvancementYear" } }),
+    prisma.appConfig.findUnique({ where: { key: "gradeAdvancementDate" } }),
   ]);
+
+  const [configMonth, configDay] = (dateConfig?.value ?? "7/1").split("/").map(Number);
+  const advancementLabel = new Date(2000, configMonth - 1, configDay).toLocaleDateString("en-US", {
+    month: "long",
+    day: "numeric",
+  });
 
   const students = raw.map((s) => ({
     id: s.id,
@@ -49,18 +56,18 @@ export default async function AdminGraduatedPage() {
       <div className="rounded-xl border border-slate-700 bg-slate-900/70 p-4 space-y-2">
         <p className="text-sm font-medium text-slate-300">Grade Advancement</p>
         <p className="text-xs text-slate-500">
-          Advances all active students up one grade on July 1. Grade 12 students are moved to this
+          Advances all active students up one grade on {advancementLabel}. Grade 12 students are moved to this
           graduated list.{" "}
           {lastAdvancement
             ? `Last run: school year ${lastAdvancement.value}.`
             : "Has not been run yet."}
         </p>
-        <AdvanceGradesButton />
+        <AdvanceGradesButton advancementDate={advancementLabel} />
       </div>
 
       {students.length === 0 ? (
         <div className="rounded-xl border border-slate-700 bg-slate-900/70 px-6 py-10 text-center text-sm text-slate-500">
-          No graduated students yet. Grades advance automatically on July 1st each year.
+          No graduated students yet. Grades advance automatically on {advancementLabel} each year.
         </div>
       ) : (
         <>

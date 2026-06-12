@@ -25,6 +25,12 @@ export default async function SettingsPage() {
       visible: true,
     },
     {
+      href: "/settings/school-year",
+      title: "School Year",
+      description: "Configure the annual grade advancement date.",
+      visible: can(user.role, "admin"),
+    },
+    {
       href: "/admin/locked-accounts",
       title: "Locked Accounts",
       description: "View and unlock permanently locked user accounts.",
