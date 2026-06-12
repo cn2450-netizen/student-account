@@ -50,6 +50,36 @@ export default async function SettingsEmailPage({
           )}
         </div>
 
+        {/* Current config summary */}
+        <div className="rounded-xl bg-slate-950/60 p-4">
+          <p className="mb-3 text-xs font-medium uppercase tracking-wide text-slate-500">Current Configuration</p>
+          <dl className="grid grid-cols-1 gap-2 sm:grid-cols-2 text-sm">
+            <div>
+              <dt className="text-xs text-slate-500">Host</dt>
+              <dd className="mt-0.5 text-slate-200 font-mono">{cfg.host || <span className="text-slate-600">(not set)</span>}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-slate-500">Port / TLS</dt>
+              <dd className="mt-0.5 text-slate-200">{cfg.port} {cfg.secure ? "· TLS enabled" : "· TLS disabled"}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-slate-500">Username</dt>
+              <dd className="mt-0.5 text-slate-200">{cfg.user || <span className="text-slate-600">(none)</span>}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-slate-500">Password</dt>
+              <dd className="mt-0.5 text-slate-200">{cfg.pass ? "••••••••" : <span className="text-slate-600">(not set)</span>}</dd>
+            </div>
+            <div className="sm:col-span-2">
+              <dt className="text-xs text-slate-500">From</dt>
+              <dd className="mt-0.5 text-slate-200">{cfg.from || <span className="text-slate-600">(not set)</span>}</dd>
+            </div>
+          </dl>
+          {!cfg.host && (
+            <p className="mt-3 text-xs text-amber-400">Email sending is disabled — configure the SMTP host and From address below to enable notifications.</p>
+          )}
+        </div>
+
         <form action={saveSmtp} className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="sm:col-span-2">

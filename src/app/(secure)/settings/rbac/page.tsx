@@ -12,6 +12,7 @@ const ROLES = [
       "Registered Parents",
       "Fund Requests",
       "Account Approvals",
+      "Email Receipts",
       "Unlock Locked Accounts",
       "Settings",
     ],
@@ -26,6 +27,7 @@ const ROLES = [
       "Registered Parents",
       "Fund Requests",
       "Account Approvals",
+      "Email Receipts",
       "Unlock Locked Accounts",
       "Settings",
     ],
@@ -41,6 +43,7 @@ const ROLES = [
       "Registered Parents",
       "Fund Requests",
       "Account Approvals",
+      "Email Receipts",
     ],
   },
   {

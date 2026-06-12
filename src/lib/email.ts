@@ -30,7 +30,7 @@ export const DEFAULT_APPROVAL_SUBJECT = "Your account has been approved";
 export const DEFAULT_APPROVAL_BODY = [
   "<p>Hi {{parentName}},</p>",
   "<p>Your registration has been approved. You can now log in to view your student's fundraising account.</p>",
-  "<p><a href=\"{{loginUrl}}\">Log in to your account</a></p>",
+  '<p><a href="{{loginUrl}}">Log in to your account</a></p>',
   "<p>If you have any questions, please contact your school organization.</p>",
 ].join("\n");
 
@@ -55,26 +55,32 @@ function render(template: string, vars: Record<string, string>): string {
   return template.replace(/\{\{(\w+)\}\}/g, (_, k) => vars[k] ?? `{{${k}}}`);
 }
 
-async function send(
+async function trySend(
   cfg: Awaited<ReturnType<typeof getEmailConfig>>,
   to: string,
   subject: string,
   html: string,
-) {
-  if (!cfg.host || !cfg.from) return;
-  const transporter = nodemailer.createTransport({
-    host: cfg.host,
-    port: cfg.port,
-    secure: cfg.secure,
-    auth: cfg.user ? { user: cfg.user, pass: cfg.pass } : undefined,
-  });
-  await transporter.sendMail({ from: cfg.from, to, subject, html });
+): Promise<boolean> {
+  if (!cfg.host || !cfg.from) return false;
+  try {
+    const transporter = nodemailer.createTransport({
+      host: cfg.host,
+      port: cfg.port,
+      secure: cfg.secure,
+      auth: cfg.user ? { user: cfg.user, pass: cfg.pass } : undefined,
+    });
+    await transporter.sendMail({ from: cfg.from, to, subject, html });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export async function sendDepositReceipt(opts: {
   to: string;
   parentName: string;
   studentName: string;
+  studentId?: string;
   amount: string;
   description: string;
   date: string;
@@ -87,7 +93,25 @@ export async function sendDepositReceipt(opts: {
     description: opts.description,
     date: opts.date,
   };
-  await send(cfg, opts.to, render(cfg.depositSubject, vars), render(cfg.depositBody, vars));
+  const subject = render(cfg.depositSubject, vars);
+  const html = render(cfg.depositBody, vars);
+
+  const emailSent = await trySend(cfg, opts.to, subject, html);
+
+  await prisma.emailReceipt.create({
+    data: {
+      type: "deposit",
+      toEmail: opts.to,
+      toName: opts.parentName,
+      subject,
+      htmlBody: html,
+      studentId: opts.studentId ?? null,
+      studentName: opts.studentName,
+      amount: opts.amount,
+      description: opts.description,
+      emailSent,
+    },
+  });
 }
 
 export async function sendApprovalEmail(opts: {
@@ -100,10 +124,40 @@ export async function sendApprovalEmail(opts: {
     parentName: opts.parentName,
     loginUrl: opts.loginUrl,
   };
-  await send(cfg, opts.to, render(cfg.approvalSubject, vars), render(cfg.approvalBody, vars));
+  const subject = render(cfg.approvalSubject, vars);
+  const html = render(cfg.approvalBody, vars);
+
+  const emailSent = await trySend(cfg, opts.to, subject, html);
+
+  await prisma.emailReceipt.create({
+    data: {
+      type: "approval",
+      toEmail: opts.to,
+      toName: opts.parentName,
+      subject,
+      htmlBody: html,
+      studentId: null,
+      studentName: null,
+      amount: null,
+      description: null,
+      emailSent,
+    },
+  });
 }
 
 export async function sendTestEmail(to: string) {
   const cfg = await getEmailConfig();
-  await send(cfg, to, "Test email from MoneyFinder", "<p>Your email configuration is working correctly.</p>");
+  if (!cfg.host || !cfg.from) throw new Error("SMTP not configured");
+  const transporter = nodemailer.createTransport({
+    host: cfg.host,
+    port: cfg.port,
+    secure: cfg.secure,
+    auth: cfg.user ? { user: cfg.user, pass: cfg.pass } : undefined,
+  });
+  await transporter.sendMail({
+    from: cfg.from,
+    to,
+    subject: "Test email from MoneyFinder",
+    html: "<p>Your email configuration is working correctly.</p>",
+  });
 }

@@ -23,3 +23,18 @@ body {
     radial-gradient(circle at 10% 10%, rgba(34, 211, 238, 0.08), transparent 36%),
     radial-gradient(circle at 90% 0%, rgba(16, 185, 129, 0.08), transparent 33%);
 }
+
+@media print {
+  header, aside, .no-print { display: none !important; }
+  body {
+    background: white !important;
+    background-image: none !important;
+    color: black !important;
+  }
+  main { padding: 0 !important; }
+  .print-receipt {
+    color: black !important;
+    background: white !important;
+  }
+  .print-receipt * { color: black !important; background: transparent !important; border-color: #ccc !important; }
+}

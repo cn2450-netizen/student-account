@@ -336,6 +336,7 @@ export async function addFundraisingEntry(
         to: student.profile.user.username,
         parentName: `${student.profile.firstName} ${student.profile.lastName}`,
         studentName: `${student.firstName} ${student.lastName}`,
+        studentId: student.id,
         amount: Number(parsed.data.amount).toFixed(2),
         description: parsed.data.description,
         date: entryDate.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }),
