@@ -205,7 +205,7 @@ export default async function SettingsEmailPage({
 
         <div className="rounded-xl bg-slate-950/60 px-4 py-3 text-xs text-slate-400">
           Available variables:{" "}
-          {["{{parentName}}", "{{studentName}}", "{{amount}}", "{{description}}", "{{date}}"].map((v) => (
+          {["{{receiptNumber}}", "{{parentName}}", "{{studentName}}", "{{amount}}", "{{description}}", "{{date}}"].map((v) => (
             <code key={v} className="mr-2 rounded bg-slate-800 px-1 font-mono text-slate-300">{v}</code>
           ))}
         </div>
@@ -318,7 +318,7 @@ export default async function SettingsEmailPage({
 
         <div className="rounded-xl bg-slate-950/60 px-4 py-3 text-xs text-slate-400">
           Available variables:{" "}
-          {["{{parentName}}", "{{studentName}}", "{{amount}}", "{{description}}", "{{date}}"].map((v) => (
+          {["{{receiptNumber}}", "{{parentName}}", "{{studentName}}", "{{amount}}", "{{description}}", "{{date}}"].map((v) => (
             <code key={v} className="mr-2 rounded bg-slate-800 px-1 font-mono text-slate-300">{v}</code>
           ))}
         </div>
