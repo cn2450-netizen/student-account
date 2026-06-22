@@ -169,15 +169,16 @@ export async function approveAccountRequest(requestId: string) {
   revalidatePath("/admin/approvals");
 
   const loginUrl = process.env.NEXTAUTH_URL ?? "";
+  let emailSent = false;
   try {
-    await sendApprovalEmail({
+    emailSent = await sendApprovalEmail({
       to: request.email,
       parentName: `${request.firstName} ${request.lastName}`,
       loginUrl,
     });
   } catch { /* email failure must not fail the approval */ }
 
-  return { success: true };
+  return { success: true, emailSent, parentEmail: request.email };
 }
 
 // ─── Reject account request (admin only) ────────────────────────────────────

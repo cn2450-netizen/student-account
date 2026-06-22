@@ -17,8 +17,8 @@ vi.mock("@/lib/prisma", () => ({
 vi.mock("@/lib/auth", () => ({ getCurrentSession: vi.fn() }));
 
 vi.mock("@/lib/email", () => ({
-  sendDepositReceipt: vi.fn().mockResolvedValue(undefined),
-  sendApprovalEmail: vi.fn().mockResolvedValue(undefined),
+  sendDepositReceipt: vi.fn().mockResolvedValue(true),
+  sendApprovalEmail: vi.fn().mockResolvedValue(true),
 }));
 
 vi.mock("bcryptjs", () => ({
@@ -400,9 +400,20 @@ describe("approveAccountRequest()", () => {
     );
   });
 
-  it("returns { success: true } on completion", async () => {
+  it("returns success with emailSent status and parent email", async () => {
     vi.mocked(getCurrentSession).mockResolvedValue(adminSession as never);
-    expect(await approveAccountRequest("req-1")).toEqual({ success: true });
+    expect(await approveAccountRequest("req-1")).toEqual({
+      success: true,
+      emailSent: true,
+      parentEmail: "parent@example.com",
+    });
+  });
+
+  it("returns emailSent=false when the email send fails", async () => {
+    vi.mocked(getCurrentSession).mockResolvedValue(adminSession as never);
+    vi.mocked(sendApprovalEmail).mockResolvedValueOnce(false);
+    const result = await approveAccountRequest("req-1");
+    expect(result).toMatchObject({ success: true, emailSent: false });
   });
 
   it("sends an approval email with the parent's name and email", async () => {

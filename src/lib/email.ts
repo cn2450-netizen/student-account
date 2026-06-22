@@ -84,7 +84,7 @@ export async function sendDepositReceipt(opts: {
   amount: string;
   description: string;
   date: string;
-}) {
+}): Promise<boolean> {
   const cfg = await getEmailConfig();
   const vars: Record<string, string> = {
     parentName: opts.parentName,
@@ -98,27 +98,31 @@ export async function sendDepositReceipt(opts: {
 
   const emailSent = await trySend(cfg, opts.to, subject, html);
 
-  await prisma.emailReceipt.create({
-    data: {
-      type: "deposit",
-      toEmail: opts.to,
-      toName: opts.parentName,
-      subject,
-      htmlBody: html,
-      studentId: opts.studentId ?? null,
-      studentName: opts.studentName,
-      amount: opts.amount,
-      description: opts.description,
-      emailSent,
-    },
-  });
+  try {
+    await prisma.emailReceipt.create({
+      data: {
+        type: "deposit",
+        toEmail: opts.to,
+        toName: opts.parentName,
+        subject,
+        htmlBody: html,
+        studentId: opts.studentId ?? null,
+        studentName: opts.studentName,
+        amount: opts.amount,
+        description: opts.description,
+        emailSent,
+      },
+    });
+  } catch { /* receipt logging is best-effort */ }
+
+  return emailSent;
 }
 
 export async function sendApprovalEmail(opts: {
   to: string;
   parentName: string;
   loginUrl: string;
-}) {
+}): Promise<boolean> {
   const cfg = await getEmailConfig();
   const vars: Record<string, string> = {
     parentName: opts.parentName,
@@ -129,20 +133,24 @@ export async function sendApprovalEmail(opts: {
 
   const emailSent = await trySend(cfg, opts.to, subject, html);
 
-  await prisma.emailReceipt.create({
-    data: {
-      type: "approval",
-      toEmail: opts.to,
-      toName: opts.parentName,
-      subject,
-      htmlBody: html,
-      studentId: null,
-      studentName: null,
-      amount: null,
-      description: null,
-      emailSent,
-    },
-  });
+  try {
+    await prisma.emailReceipt.create({
+      data: {
+        type: "approval",
+        toEmail: opts.to,
+        toName: opts.parentName,
+        subject,
+        htmlBody: html,
+        studentId: null,
+        studentName: null,
+        amount: null,
+        description: null,
+        emailSent,
+      },
+    });
+  } catch { /* receipt logging is best-effort */ }
+
+  return emailSent;
 }
 
 export async function purgeReceiptsOlderThan5Years(): Promise<number> {

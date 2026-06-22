@@ -23,6 +23,7 @@ export function ApprovalQueue({
   const [list, setList] = useState(requests);
   const [isPending, startTransition] = useTransition();
   const [feedback, setFeedback] = useState<Record<string, string>>({});
+  const [emailNotice, setEmailNotice] = useState<Record<string, { sent: boolean; email: string }>>({});
 
   function removeFromList(id: string) {
     setList((prev) => prev.filter((r) => r.id !== id));
@@ -44,6 +45,12 @@ export function ApprovalQueue({
         setFeedback((prev) => ({ ...prev, [requestId]: result.error! }));
       } else {
         removeFromList(requestId);
+        if ("emailSent" in result) {
+          setEmailNotice((prev) => ({
+            ...prev,
+            [requestId]: { sent: result.emailSent!, email: result.parentEmail! },
+          }));
+        }
       }
     });
   }
@@ -68,6 +75,7 @@ export function ApprovalQueue({
   }
 
   return (
+    <>
     <div className="rounded-xl border border-slate-700 bg-slate-900/70 overflow-hidden">
       <table className="w-full text-sm">
         <thead>
@@ -145,5 +153,18 @@ export function ApprovalQueue({
         password — they will be required to set a new password on first login.
       </div>
     </div>
+
+    {Object.entries(emailNotice).map(([id, { sent, email }]) => (
+      sent ? (
+        <div key={id} className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-300">
+          Account approved — confirmation email sent to <strong>{email}</strong>.
+        </div>
+      ) : (
+        <div key={id} className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-300">
+          Account approved — but the confirmation email to <strong>{email}</strong> could not be sent. Check your SMTP settings.
+        </div>
+      )
+    ))}
+    </>
   );
 }
