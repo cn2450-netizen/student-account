@@ -8,6 +8,8 @@ import {
   DEFAULT_DEPOSIT_BODY,
   DEFAULT_APPROVAL_SUBJECT,
   DEFAULT_APPROVAL_BODY,
+  DEFAULT_WITHDRAW_SUBJECT,
+  DEFAULT_WITHDRAW_BODY,
 } from "@/lib/email";
 
 export default async function SettingsEmailPage({
@@ -20,11 +22,12 @@ export default async function SettingsEmailPage({
   const cfg = await getEmailConfig();
   const s = searchParams ?? {};
 
-  const smtpSaved     = s.section === "smtp"     && s.updated === "1";
-  const testSent      = s.section === "test"     && s.updated === "1";
-  const testFailed    = s.section === "test"     && s.updated === "0";
-  const depositSaved  = s.section === "deposit"  && s.updated === "1";
-  const approvalSaved = s.section === "approval" && s.updated === "1";
+  const smtpSaved      = s.section === "smtp"     && s.updated === "1";
+  const testSent       = s.section === "test"     && s.updated === "1";
+  const testFailed     = s.section === "test"     && s.updated === "0";
+  const depositSaved   = s.section === "deposit"  && s.updated === "1";
+  const approvalSaved  = s.section === "approval" && s.updated === "1";
+  const withdrawSaved  = s.section === "withdraw" && s.updated === "1";
 
   return (
     <div className="space-y-8">
@@ -295,6 +298,71 @@ export default async function SettingsEmailPage({
           </div>
         </form>
       </div>
+
+      {/* ── Withdrawal Notification Template ────────────────────────────────── */}
+      <div className="rounded-2xl border border-slate-700 bg-slate-900/70 p-5 space-y-4">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h3 className="font-semibold text-cyan-300">Withdrawal Notification</h3>
+            <p className="text-sm text-slate-400">
+              Optionally notify parents when a withdrawal is recorded against their student&apos;s account.
+              Disabled by default.
+            </p>
+          </div>
+          {withdrawSaved && (
+            <span className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-300">
+              Saved.
+            </span>
+          )}
+        </div>
+
+        <div className="rounded-xl bg-slate-950/60 px-4 py-3 text-xs text-slate-400">
+          Available variables:{" "}
+          {["{{parentName}}", "{{studentName}}", "{{amount}}", "{{description}}", "{{date}}"].map((v) => (
+            <code key={v} className="mr-2 rounded bg-slate-800 px-1 font-mono text-slate-300">{v}</code>
+          ))}
+        </div>
+
+        <form action={saveWithdrawTemplate} className="space-y-4">
+          <label className="inline-flex cursor-pointer items-center gap-3 rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-3 text-sm text-slate-200">
+            <input
+              name="withdrawEnabled" type="checkbox" defaultChecked={cfg.withdrawEnabled}
+              className="h-4 w-4 rounded border-slate-600 bg-slate-900 text-cyan-500"
+            />
+            Send withdrawal notifications to parents
+          </label>
+
+          <div>
+            <label htmlFor="withdrawSubject" className="block text-sm font-medium text-slate-300">Subject</label>
+            <input
+              id="withdrawSubject" name="withdrawSubject" defaultValue={cfg.withdrawSubject}
+              placeholder={DEFAULT_WITHDRAW_SUBJECT}
+              className="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-3 text-sm text-slate-200 outline-none focus:border-cyan-500/70 focus:ring-1 focus:ring-cyan-500/30"
+            />
+          </div>
+          <div>
+            <label htmlFor="withdrawBody" className="block text-sm font-medium text-slate-300">Body (HTML)</label>
+            <textarea
+              id="withdrawBody" name="withdrawBody" rows={10} defaultValue={cfg.withdrawBody}
+              className="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-3 font-mono text-sm text-slate-200 outline-none focus:border-cyan-500/70 focus:ring-1 focus:ring-cyan-500/30"
+            />
+          </div>
+          <div className="flex gap-3">
+            <button
+              type="submit"
+              className="rounded-2xl bg-cyan-500 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-cyan-400"
+            >
+              Save
+            </button>
+            <button
+              type="submit" name="reset" value="1"
+              className="rounded-2xl border border-slate-600 px-4 py-2 text-sm font-semibold text-slate-400 transition hover:border-slate-500 hover:text-slate-300"
+            >
+              Reset Template to Default
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }
@@ -357,4 +425,18 @@ async function saveApprovalTemplate(formData: FormData) {
     prisma.appConfig.upsert({ where: { key: "email.approvalBody"    }, update: { value: body    }, create: { key: "email.approvalBody",    value: body    } }),
   ]);
   redirect("/settings/email?section=approval&updated=1");
+}
+
+async function saveWithdrawTemplate(formData: FormData) {
+  "use server";
+  const reset   = formData.get("reset") === "1";
+  const enabled = formData.get("withdrawEnabled") === "on" ? "true" : "false";
+  const subject = reset ? DEFAULT_WITHDRAW_SUBJECT : ((formData.get("withdrawSubject") as string | null)?.trim() ?? DEFAULT_WITHDRAW_SUBJECT);
+  const body    = reset ? DEFAULT_WITHDRAW_BODY    : ((formData.get("withdrawBody")    as string | null) ?? DEFAULT_WITHDRAW_BODY);
+  await Promise.all([
+    prisma.appConfig.upsert({ where: { key: "email.withdrawEnabled" }, update: { value: enabled }, create: { key: "email.withdrawEnabled", value: enabled } }),
+    prisma.appConfig.upsert({ where: { key: "email.withdrawSubject" }, update: { value: subject }, create: { key: "email.withdrawSubject", value: subject } }),
+    prisma.appConfig.upsert({ where: { key: "email.withdrawBody"    }, update: { value: body    }, create: { key: "email.withdrawBody",    value: body    } }),
+  ]);
+  redirect("/settings/email?section=withdraw&updated=1");
 }

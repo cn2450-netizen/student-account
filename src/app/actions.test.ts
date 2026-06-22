@@ -19,6 +19,7 @@ vi.mock("@/lib/auth", () => ({ getCurrentSession: vi.fn() }));
 vi.mock("@/lib/email", () => ({
   sendDepositReceipt: vi.fn().mockResolvedValue(true),
   sendApprovalEmail: vi.fn().mockResolvedValue(true),
+  sendWithdrawReceipt: vi.fn().mockResolvedValue(true),
 }));
 
 vi.mock("bcryptjs", () => ({

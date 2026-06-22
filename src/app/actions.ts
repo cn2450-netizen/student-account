@@ -7,7 +7,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getCurrentSession } from "@/lib/auth";
 import { can } from "@/lib/rbac";
-import { sendDepositReceipt, sendApprovalEmail } from "@/lib/email";
+import { sendDepositReceipt, sendApprovalEmail, sendWithdrawReceipt } from "@/lib/email";
 
 // ─── Change password on first login ─────────────────────────────────────────
 
@@ -398,14 +398,35 @@ export async function addExpenseEntry(
     }
   }
 
+  const entryDate = parsed.data.date ? new Date(parsed.data.date) : new Date();
+
   await prisma.expenseEntry.create({
     data: {
       studentId: parsed.data.studentId,
       amount: parsed.data.amount,
       description: parsed.data.description,
-      date: parsed.data.date ? new Date(parsed.data.date) : new Date(),
+      date: entryDate,
     },
   });
+
+  // Send withdrawal notification to the student's parent (if enabled in settings)
+  try {
+    const student = await prisma.student.findUnique({
+      where: { id: parsed.data.studentId },
+      include: { profile: { include: { user: { select: { username: true } } } } },
+    });
+    if (student?.profile) {
+      await sendWithdrawReceipt({
+        to: student.profile.user.username,
+        parentName: `${student.profile.firstName} ${student.profile.lastName}`,
+        studentName: `${student.firstName} ${student.lastName}`,
+        studentId: student.id,
+        amount: Number(parsed.data.amount).toFixed(2),
+        description: parsed.data.description,
+        date: entryDate.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }),
+      });
+    }
+  } catch { /* email failure must not fail the expense entry */ }
 
   revalidatePath("/expenses");
   return { success: true };

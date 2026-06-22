@@ -23,11 +23,14 @@ import {
   getEmailConfig,
   sendDepositReceipt,
   sendApprovalEmail,
+  sendWithdrawReceipt,
   purgeReceiptsOlderThan5Years,
   DEFAULT_DEPOSIT_SUBJECT,
   DEFAULT_DEPOSIT_BODY,
   DEFAULT_APPROVAL_SUBJECT,
   DEFAULT_APPROVAL_BODY,
+  DEFAULT_WITHDRAW_SUBJECT,
+  DEFAULT_WITHDRAW_BODY,
 } from "@/lib/email";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -365,5 +368,97 @@ describe("purgeReceiptsOlderThan5Years()", () => {
     const result = await purgeReceiptsOlderThan5Years();
 
     expect(result).toBe(0);
+  });
+});
+
+// ── sendWithdrawReceipt() ─────────────────────────────────────────────────────
+
+const WITHDRAW_OPTS = {
+  to: "parent@example.com",
+  parentName: "Jane Doe",
+  studentName: "Alice Doe",
+  studentId: "student-abc",
+  amount: "25.00",
+  description: "Supply fee",
+  date: "June 22, 2026",
+};
+
+describe("sendWithdrawReceipt()", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(prisma.emailReceipt.create).mockResolvedValue({} as never);
+  });
+
+  it("returns false immediately when withdrawEnabled is false without sending or saving", async () => {
+    vi.mocked(prisma.appConfig.findMany).mockResolvedValue([]); // withdrawEnabled defaults to false
+
+    const result = await sendWithdrawReceipt(WITHDRAW_OPTS);
+
+    expect(result).toBe(false);
+    expect(prisma.emailReceipt.create).not.toHaveBeenCalled();
+  });
+
+  it("does not call nodemailer when withdrawEnabled is false", async () => {
+    vi.mocked(prisma.appConfig.findMany).mockResolvedValue([]);
+
+    await sendWithdrawReceipt(WITHDRAW_OPTS);
+
+    expect(nodemailer.createTransport).not.toHaveBeenCalled();
+  });
+
+  it("saves a receipt and sends when withdrawEnabled is true and SMTP is configured", async () => {
+    vi.mocked(prisma.appConfig.findMany).mockResolvedValue([
+      ...makeSmtpRows(),
+      { key: "email.withdrawEnabled", value: "true" },
+    ]);
+    mockSendMail(true);
+
+    const result = await sendWithdrawReceipt(WITHDRAW_OPTS);
+
+    expect(result).toBe(true);
+    expect(prisma.emailReceipt.create).toHaveBeenCalledOnce();
+  });
+
+  it("stores type=withdrawal with correct metadata", async () => {
+    vi.mocked(prisma.appConfig.findMany).mockResolvedValue([
+      ...makeSmtpRows(),
+      { key: "email.withdrawEnabled", value: "true" },
+    ]);
+    mockSendMail(true);
+
+    await sendWithdrawReceipt(WITHDRAW_OPTS);
+
+    const { data } = vi.mocked(prisma.emailReceipt.create).mock.calls[0][0];
+    expect(data.type).toBe("withdrawal");
+    expect(data.toEmail).toBe("parent@example.com");
+    expect(data.studentId).toBe("student-abc");
+    expect(data.amount).toBe("25.00");
+    expect(data.description).toBe("Supply fee");
+  });
+
+  it("uses the default withdraw template when no custom template is stored", async () => {
+    vi.mocked(prisma.appConfig.findMany).mockResolvedValue([
+      { key: "email.withdrawEnabled", value: "true" },
+    ]);
+
+    await sendWithdrawReceipt(WITHDRAW_OPTS);
+
+    const { data } = vi.mocked(prisma.emailReceipt.create).mock.calls[0][0];
+    expect(data.subject).toContain("Alice Doe");
+    expect(data.htmlBody).toContain("Jane Doe");
+    expect(data.htmlBody).toContain("25.00");
+    expect(data.htmlBody).toContain("Supply fee");
+  });
+
+  it("sets emailSent=false when SMTP is not configured even if withdrawEnabled is true", async () => {
+    vi.mocked(prisma.appConfig.findMany).mockResolvedValue([
+      { key: "email.withdrawEnabled", value: "true" },
+      // no SMTP host/from
+    ]);
+
+    await sendWithdrawReceipt(WITHDRAW_OPTS);
+
+    const { data } = vi.mocked(prisma.emailReceipt.create).mock.calls[0][0];
+    expect(data.emailSent).toBe(false);
   });
 });

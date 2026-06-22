@@ -12,12 +12,27 @@ const CONFIG_KEYS = [
   "email.depositBody",
   "email.approvalSubject",
   "email.approvalBody",
+  "email.withdrawEnabled",
+  "email.withdrawSubject",
+  "email.withdrawBody",
 ] as const;
 
 export const DEFAULT_DEPOSIT_SUBJECT = "Fundraising deposit recorded for {{studentName}}";
 export const DEFAULT_DEPOSIT_BODY = [
   "<p>Hi {{parentName}},</p>",
   "<p>A fundraising deposit has been recorded for <strong>{{studentName}}</strong>.</p>",
+  "<p>",
+  "  <strong>Amount:</strong> ${{amount}}<br>",
+  "  <strong>Description:</strong> {{description}}<br>",
+  "  <strong>Date:</strong> {{date}}",
+  "</p>",
+  "<p>If you have any questions, please contact your school organization.</p>",
+].join("\n");
+
+export const DEFAULT_WITHDRAW_SUBJECT = "Withdrawal recorded for {{studentName}}";
+export const DEFAULT_WITHDRAW_BODY = [
+  "<p>Hi {{parentName}},</p>",
+  "<p>A withdrawal has been recorded against <strong>{{studentName}}</strong>'s account.</p>",
   "<p>",
   "  <strong>Amount:</strong> ${{amount}}<br>",
   "  <strong>Description:</strong> {{description}}<br>",
@@ -48,6 +63,9 @@ export async function getEmailConfig() {
     depositBody: m["email.depositBody"] ?? DEFAULT_DEPOSIT_BODY,
     approvalSubject: m["email.approvalSubject"] ?? DEFAULT_APPROVAL_SUBJECT,
     approvalBody: m["email.approvalBody"] ?? DEFAULT_APPROVAL_BODY,
+    withdrawEnabled: m["email.withdrawEnabled"] === "true",
+    withdrawSubject: m["email.withdrawSubject"] ?? DEFAULT_WITHDRAW_SUBJECT,
+    withdrawBody: m["email.withdrawBody"] ?? DEFAULT_WITHDRAW_BODY,
   };
 }
 
@@ -145,6 +163,50 @@ export async function sendApprovalEmail(opts: {
         studentName: null,
         amount: null,
         description: null,
+        emailSent,
+      },
+    });
+  } catch { /* receipt logging is best-effort */ }
+
+  return emailSent;
+}
+
+export async function sendWithdrawReceipt(opts: {
+  to: string;
+  parentName: string;
+  studentName: string;
+  studentId?: string;
+  amount: string;
+  description: string;
+  date: string;
+}): Promise<boolean> {
+  const cfg = await getEmailConfig();
+  if (!cfg.withdrawEnabled) return false;
+
+  const vars: Record<string, string> = {
+    parentName: opts.parentName,
+    studentName: opts.studentName,
+    amount: opts.amount,
+    description: opts.description,
+    date: opts.date,
+  };
+  const subject = render(cfg.withdrawSubject, vars);
+  const html = render(cfg.withdrawBody, vars);
+
+  const emailSent = await trySend(cfg, opts.to, subject, html);
+
+  try {
+    await prisma.emailReceipt.create({
+      data: {
+        type: "withdrawal",
+        toEmail: opts.to,
+        toName: opts.parentName,
+        subject,
+        htmlBody: html,
+        studentId: opts.studentId ?? null,
+        studentName: opts.studentName,
+        amount: opts.amount,
+        description: opts.description,
         emailSent,
       },
     });
