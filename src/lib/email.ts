@@ -17,11 +17,12 @@ const CONFIG_KEYS = [
   "email.withdrawBody",
 ] as const;
 
-export const DEFAULT_DEPOSIT_SUBJECT = "Fundraising deposit recorded for {{studentName}}";
+export const DEFAULT_DEPOSIT_SUBJECT = "Deposit Receipt #{{receiptNumber}} — {{studentName}}";
 export const DEFAULT_DEPOSIT_BODY = [
   "<p>Hi {{parentName}},</p>",
   "<p>A fundraising deposit has been recorded for <strong>{{studentName}}</strong>.</p>",
   "<p>",
+  "  <strong>Receipt #:</strong> {{receiptNumber}}<br>",
   "  <strong>Amount:</strong> ${{amount}}<br>",
   "  <strong>Description:</strong> {{description}}<br>",
   "  <strong>Date:</strong> {{date}}",
@@ -29,11 +30,12 @@ export const DEFAULT_DEPOSIT_BODY = [
   "<p>If you have any questions, please contact your school organization.</p>",
 ].join("\n");
 
-export const DEFAULT_WITHDRAW_SUBJECT = "Withdrawal recorded for {{studentName}}";
+export const DEFAULT_WITHDRAW_SUBJECT = "Withdrawal Notice #{{receiptNumber}} — {{studentName}}";
 export const DEFAULT_WITHDRAW_BODY = [
   "<p>Hi {{parentName}},</p>",
   "<p>A withdrawal has been recorded against <strong>{{studentName}}</strong>'s account.</p>",
   "<p>",
+  "  <strong>Receipt #:</strong> {{receiptNumber}}<br>",
   "  <strong>Amount:</strong> ${{amount}}<br>",
   "  <strong>Description:</strong> {{description}}<br>",
   "  <strong>Date:</strong> {{date}}",
@@ -94,6 +96,22 @@ async function trySend(
   }
 }
 
+async function getNextReceiptNumber(): Promise<number> {
+  return prisma.$transaction(
+    async (tx) => {
+      const current = await tx.appConfig.findUnique({ where: { key: "email.receiptCounter" } });
+      const next = current ? parseInt(current.value, 10) + 1 : 1;
+      await tx.appConfig.upsert({
+        where: { key: "email.receiptCounter" },
+        update: { value: String(next) },
+        create: { key: "email.receiptCounter", value: String(next) },
+      });
+      return next;
+    },
+    { isolationLevel: "Serializable" },
+  );
+}
+
 export async function sendDepositReceipt(opts: {
   to: string;
   parentName: string;
@@ -104,12 +122,14 @@ export async function sendDepositReceipt(opts: {
   date: string;
 }): Promise<boolean> {
   const cfg = await getEmailConfig();
+  const receiptNumber = await getNextReceiptNumber();
   const vars: Record<string, string> = {
     parentName: opts.parentName,
     studentName: opts.studentName,
     amount: opts.amount,
     description: opts.description,
     date: opts.date,
+    receiptNumber: String(receiptNumber),
   };
   const subject = render(cfg.depositSubject, vars);
   const html = render(cfg.depositBody, vars);
@@ -120,6 +140,7 @@ export async function sendDepositReceipt(opts: {
     await prisma.emailReceipt.create({
       data: {
         type: "deposit",
+        receiptNumber,
         toEmail: opts.to,
         toName: opts.parentName,
         subject,
@@ -183,12 +204,14 @@ export async function sendWithdrawReceipt(opts: {
   const cfg = await getEmailConfig();
   if (!cfg.withdrawEnabled) return false;
 
+  const receiptNumber = await getNextReceiptNumber();
   const vars: Record<string, string> = {
     parentName: opts.parentName,
     studentName: opts.studentName,
     amount: opts.amount,
     description: opts.description,
     date: opts.date,
+    receiptNumber: String(receiptNumber),
   };
   const subject = render(cfg.withdrawSubject, vars);
   const html = render(cfg.withdrawBody, vars);
@@ -199,6 +222,7 @@ export async function sendWithdrawReceipt(opts: {
     await prisma.emailReceipt.create({
       data: {
         type: "withdrawal",
+        receiptNumber,
         toEmail: opts.to,
         toName: opts.parentName,
         subject,

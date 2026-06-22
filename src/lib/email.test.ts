@@ -4,8 +4,9 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
-    appConfig: { findMany: vi.fn() },
+    appConfig: { findMany: vi.fn(), findUnique: vi.fn(), upsert: vi.fn() },
     emailReceipt: { create: vi.fn(), deleteMany: vi.fn() },
+    $transaction: vi.fn(),
   },
 }));
 
@@ -139,6 +140,9 @@ describe("sendDepositReceipt()", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(prisma.emailReceipt.create).mockResolvedValue({} as never);
+    vi.mocked(prisma.appConfig.findUnique).mockResolvedValue(null);
+    vi.mocked(prisma.appConfig.upsert).mockResolvedValue({} as never);
+    vi.mocked(prisma.$transaction).mockImplementation(async (fn: (tx: typeof prisma) => Promise<number>) => fn(prisma));
   });
 
   it("always creates a receipt record regardless of SMTP configuration", async () => {
@@ -266,6 +270,41 @@ describe("sendDepositReceipt()", () => {
     const { data } = vi.mocked(prisma.emailReceipt.create).mock.calls[0][0];
     expect(data.studentId).toBeNull();
   });
+
+  it("assigns receiptNumber=1 when no counter exists and stores it on the receipt record", async () => {
+    vi.mocked(prisma.appConfig.findMany).mockResolvedValue([]);
+    vi.mocked(prisma.appConfig.findUnique).mockResolvedValue(null); // no existing counter
+
+    await sendDepositReceipt(DEPOSIT_OPTS);
+
+    const { data } = vi.mocked(prisma.emailReceipt.create).mock.calls[0][0];
+    expect(data.receiptNumber).toBe(1);
+  });
+
+  it("increments the counter when one already exists", async () => {
+    vi.mocked(prisma.appConfig.findMany).mockResolvedValue([]);
+    vi.mocked(prisma.appConfig.findUnique).mockResolvedValue(
+      { key: "email.receiptCounter", value: "41" } as never,
+    );
+
+    await sendDepositReceipt(DEPOSIT_OPTS);
+
+    const { data } = vi.mocked(prisma.emailReceipt.create).mock.calls[0][0];
+    expect(data.receiptNumber).toBe(42);
+  });
+
+  it("includes receiptNumber in the rendered subject and body", async () => {
+    vi.mocked(prisma.appConfig.findMany).mockResolvedValue([]);
+    vi.mocked(prisma.appConfig.findUnique).mockResolvedValue(
+      { key: "email.receiptCounter", value: "9" } as never,
+    );
+
+    await sendDepositReceipt(DEPOSIT_OPTS);
+
+    const { data } = vi.mocked(prisma.emailReceipt.create).mock.calls[0][0];
+    expect(data.subject).toContain("#10");
+    expect(data.htmlBody).toContain("10");
+  });
 });
 
 // ── sendApprovalEmail() ───────────────────────────────────────────────────────
@@ -387,6 +426,9 @@ describe("sendWithdrawReceipt()", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(prisma.emailReceipt.create).mockResolvedValue({} as never);
+    vi.mocked(prisma.appConfig.findUnique).mockResolvedValue(null);
+    vi.mocked(prisma.appConfig.upsert).mockResolvedValue({} as never);
+    vi.mocked(prisma.$transaction).mockImplementation(async (fn: (tx: typeof prisma) => Promise<number>) => fn(prisma));
   });
 
   it("returns false immediately when withdrawEnabled is false without sending or saving", async () => {
@@ -460,5 +502,32 @@ describe("sendWithdrawReceipt()", () => {
 
     const { data } = vi.mocked(prisma.emailReceipt.create).mock.calls[0][0];
     expect(data.emailSent).toBe(false);
+  });
+
+  it("assigns a receiptNumber and stores it on the receipt record", async () => {
+    vi.mocked(prisma.appConfig.findMany).mockResolvedValue([
+      { key: "email.withdrawEnabled", value: "true" },
+    ]);
+    vi.mocked(prisma.appConfig.findUnique).mockResolvedValue(
+      { key: "email.receiptCounter", value: "99" } as never,
+    );
+
+    await sendWithdrawReceipt(WITHDRAW_OPTS);
+
+    const { data } = vi.mocked(prisma.emailReceipt.create).mock.calls[0][0];
+    expect(data.receiptNumber).toBe(100);
+  });
+
+  it("includes receiptNumber in the rendered subject and body", async () => {
+    vi.mocked(prisma.appConfig.findMany).mockResolvedValue([
+      { key: "email.withdrawEnabled", value: "true" },
+    ]);
+    vi.mocked(prisma.appConfig.findUnique).mockResolvedValue(null);
+
+    await sendWithdrawReceipt(WITHDRAW_OPTS);
+
+    const { data } = vi.mocked(prisma.emailReceipt.create).mock.calls[0][0];
+    expect(data.subject).toContain("#1");
+    expect(data.htmlBody).toContain("1");
   });
 });

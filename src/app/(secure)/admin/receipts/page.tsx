@@ -85,7 +85,7 @@ export default async function ReceiptsPage({
 
         {/* Type tabs */}
         <div className="flex rounded-xl border border-slate-700 overflow-hidden text-sm">
-          {(["all", "deposit", "approval"] as const).map((t) => (
+          {(["all", "deposit", "withdrawal", "approval"] as const).map((t) => (
             <Link
               key={t}
               href={`/admin/receipts?year=${year}&type=${t}`}
@@ -127,6 +127,7 @@ export default async function ReceiptsPage({
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-slate-700 text-left text-xs uppercase tracking-wide text-slate-400">
+                <th className="px-4 py-3">Receipt #</th>
                 <th className="px-4 py-3">Date</th>
                 <th className="px-4 py-3">Type</th>
                 <th className="px-4 py-3">Recipient</th>
@@ -139,6 +140,9 @@ export default async function ReceiptsPage({
             <tbody className="divide-y divide-slate-800">
               {receipts.map((r) => (
                 <tr key={r.id} className="hover:bg-slate-800/40 transition">
+                  <td className="px-4 py-3 font-mono text-slate-400">
+                    {r.receiptNumber != null ? `#${r.receiptNumber}` : "—"}
+                  </td>
                   <td className="px-4 py-3 text-slate-400 whitespace-nowrap">
                     {new Date(r.sentAt).toLocaleDateString()}
                   </td>
@@ -147,6 +151,8 @@ export default async function ReceiptsPage({
                       className={`rounded-full px-2 py-0.5 text-xs font-medium ${
                         r.type === "deposit"
                           ? "bg-emerald-500/15 text-emerald-400"
+                          : r.type === "withdrawal"
+                          ? "bg-amber-500/15 text-amber-400"
                           : "bg-cyan-500/15 text-cyan-400"
                       }`}
                     >

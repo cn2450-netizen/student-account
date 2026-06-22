@@ -5,11 +5,12 @@ import { can } from "@/lib/rbac";
 import { prisma } from "@/lib/prisma";
 import { PrintButton } from "@/components/print-button";
 
-export default async function ReceiptDetailPage({ params }: { params: { id: string } }) {
+export default async function ReceiptDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const user = await requireAuth();
   if (!can(user.role, "fundRequests") && !can(user.role, "allFunds")) redirect("/dashboard");
 
-  const receipt = await prisma.emailReceipt.findUnique({ where: { id: params.id } });
+  const receipt = await prisma.emailReceipt.findUnique({ where: { id } });
   if (!receipt) notFound();
 
   const sentDate = new Date(receipt.sentAt).toLocaleString("en-US", {
@@ -35,15 +36,28 @@ export default async function ReceiptDetailPage({ params }: { params: { id: stri
         {/* Header */}
         <div className="border-b border-slate-700 pb-4 space-y-1">
           <div className="flex items-center justify-between gap-4">
-            <span
-              className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                receipt.type === "deposit"
-                  ? "bg-emerald-500/15 text-emerald-400"
-                  : "bg-cyan-500/15 text-cyan-400"
-              }`}
-            >
-              {receipt.type === "deposit" ? "Deposit Receipt" : "Account Approval"}
-            </span>
+            <div className="flex items-center gap-3">
+              <span
+                className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                  receipt.type === "deposit"
+                    ? "bg-emerald-500/15 text-emerald-400"
+                    : receipt.type === "withdrawal"
+                    ? "bg-amber-500/15 text-amber-400"
+                    : "bg-cyan-500/15 text-cyan-400"
+                }`}
+              >
+                {receipt.type === "deposit"
+                  ? "Deposit Receipt"
+                  : receipt.type === "withdrawal"
+                  ? "Withdrawal Notice"
+                  : "Account Approval"}
+              </span>
+              {receipt.receiptNumber != null && (
+                <span className="font-mono text-lg font-semibold text-slate-100">
+                  #{receipt.receiptNumber}
+                </span>
+              )}
+            </div>
             <span className="text-xs text-slate-500">{sentDate}</span>
           </div>
           <p className="text-lg font-semibold text-slate-100">{receipt.subject}</p>

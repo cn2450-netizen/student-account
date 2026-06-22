@@ -33,9 +33,10 @@ export async function GET(req: NextRequest) {
     orderBy: { sentAt: "asc" },
   });
 
-  const headers = ["Receipt ID", "Date", "Type", "Recipient Name", "Recipient Email", "Student", "Amount", "Description", "Email Sent"];
+  const headers = ["Receipt #", "Receipt ID", "Date", "Type", "Recipient Name", "Recipient Email", "Student", "Amount", "Description", "Email Sent"];
 
   const rows = receipts.map((r) => [
+    r.receiptNumber != null ? String(r.receiptNumber) : "",
     r.id,
     new Date(r.sentAt).toLocaleDateString("en-US"),
     r.type,

@@ -146,18 +146,19 @@ model IpRateLimit {
 // ─── Email receipt log (5-year retention) ────────────────────────────────────
 
 model EmailReceipt {
-  id          String   @id @default(cuid())
-  type        String   // "deposit" | "approval"
-  toEmail     String
-  toName      String
-  subject     String
-  htmlBody    String   @db.Text
-  studentId   String?
-  studentName String?
-  amount      Decimal? @db.Decimal(10, 2)
-  description String?
-  emailSent   Boolean  @default(false)
-  sentAt      DateTime @default(now())
+  id            String   @id @default(cuid())
+  type          String   // "deposit" | "withdrawal" | "approval"
+  receiptNumber Int?     // sequential number for deposit and withdrawal only
+  toEmail       String
+  toName        String
+  subject       String
+  htmlBody      String   @db.Text
+  studentId     String?
+  studentName   String?
+  amount        Decimal? @db.Decimal(10, 2)
+  description   String?
+  emailSent     Boolean  @default(false)
+  sentAt        DateTime @default(now())
 
   student Student? @relation(fields: [studentId], references: [id], onDelete: SetNull)
 }
