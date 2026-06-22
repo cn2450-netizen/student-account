@@ -629,9 +629,11 @@ export async function approveFundRequest(
 
   const req = await prisma.fundRequest.findUnique({
     where: { id: requestId },
-    include: { student: true },
+    include: { student: { include: { profile: { include: { user: { select: { username: true } } } } } } },
   });
   if (!req || req.status !== "PENDING") return { error: "Request not found or already processed" };
+
+  const approvedAt = new Date();
 
   await prisma.$transaction([
     prisma.fundRequest.update({
@@ -640,7 +642,7 @@ export async function approveFundRequest(
         status: "APPROVED",
         notes: notes ?? null,
         reviewedBy: session.user.name,
-        reviewedAt: new Date(),
+        reviewedAt: approvedAt,
       },
     }),
     // Automatically create an expense entry when approved
@@ -649,10 +651,24 @@ export async function approveFundRequest(
         studentId: req.studentId,
         description: req.description,
         amount: req.amount,
-        date: new Date(),
+        date: approvedAt,
       },
     }),
   ]);
+
+  try {
+    if (req.student.profile) {
+      await sendWithdrawReceipt({
+        to: req.student.profile.user.username,
+        parentName: `${req.student.profile.firstName} ${req.student.profile.lastName}`,
+        studentName: `${req.student.firstName} ${req.student.lastName}`,
+        studentId: req.student.id,
+        amount: Number(req.amount).toFixed(2),
+        description: req.description,
+        date: approvedAt.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }),
+      });
+    }
+  } catch { /* email failure must not fail the approval */ }
 
   revalidatePath("/admin/fund-requests");
   return { success: true };
