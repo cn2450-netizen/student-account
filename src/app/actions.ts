@@ -244,12 +244,10 @@ const StudentSchema = z.object({
   lastName: z.string().min(1, "Last name is required"),
   grade: z
     .string()
-    .optional()
+    .min(1, "Grade is required")
     .refine(
-      (value) => !value || ["8", "9", "10", "11", "12"].includes(value),
-      {
-        message: "Grade must be 8, 9, 10, 11, or 12",
-      },
+      (value) => ["8", "9", "10", "11", "12"].includes(value),
+      { message: "Grade must be between 8 and 12" },
     ),
 });
 
@@ -263,7 +261,7 @@ export async function createStudent(
   const parsed = StudentSchema.safeParse({
     firstName: formData.get("firstName"),
     lastName: formData.get("lastName"),
-    grade: formData.get("grade") || undefined,
+    grade: formData.get("grade") as string,
   });
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Invalid input" };

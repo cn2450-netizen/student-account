@@ -38,13 +38,14 @@ export function StudentForm() {
           />
         </div>
         <div className="w-28">
-          <label className="mb-1 block text-xs text-slate-400">Grade (optional)</label>
+          <label className="mb-1 block text-xs text-slate-400">Grade</label>
           <select
             name="grade"
             defaultValue=""
+            required
             className="w-full rounded-lg border border-slate-600 bg-slate-950 px-3 py-2 text-slate-100 text-sm outline-none ring-cyan-400/40 focus:ring"
           >
-            <option value="">None</option>
+            <option value="" disabled>Select</option>
             <option value="8">8</option>
             <option value="9">9</option>
             <option value="10">10</option>
