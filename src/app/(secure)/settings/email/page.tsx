@@ -1,6 +1,5 @@
 import { redirect } from "next/navigation";
 import { requirePermission } from "@/lib/secure-page";
-import { getCurrentSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import {
   getEmailConfig,
@@ -150,7 +149,7 @@ export default async function SettingsEmailPage({
       <div className="rounded-2xl border border-slate-700 bg-slate-900/70 p-5 space-y-3">
         <h3 className="font-semibold text-cyan-300">Send Test Email</h3>
         <p className="text-sm text-slate-400">
-          Send a test message to your account email to verify the SMTP configuration is working.
+          Send a test message to verify the SMTP configuration is working.
         </p>
         {testSent && (
           <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-300">
@@ -162,10 +161,23 @@ export default async function SettingsEmailPage({
             Failed to send test email. Check your SMTP settings above.
           </div>
         )}
-        <form action={runTestEmail}>
+        <form action={runTestEmail} className="flex flex-wrap items-end gap-3">
+          <div className="flex-1 min-w-48">
+            <label htmlFor="testEmail" className="block text-sm font-medium text-slate-300">
+              Send to
+            </label>
+            <input
+              id="testEmail"
+              name="email"
+              type="email"
+              required
+              placeholder="recipient@example.com"
+              className="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-3 text-sm text-slate-200 outline-none focus:border-cyan-500/70 focus:ring-1 focus:ring-cyan-500/30"
+            />
+          </div>
           <button
             type="submit"
-            className="rounded-2xl bg-slate-700 px-4 py-2 text-sm font-semibold text-slate-100 transition hover:bg-slate-600"
+            className="rounded-2xl bg-slate-700 px-4 py-2.5 text-sm font-semibold text-slate-100 transition hover:bg-slate-600"
           >
             Send Test Email
           </button>
@@ -307,16 +319,20 @@ async function saveSmtp(formData: FormData) {
   redirect("/settings/email?section=smtp&updated=1");
 }
 
-async function runTestEmail() {
+async function runTestEmail(formData: FormData) {
   "use server";
-  const session = await getCurrentSession();
-  if (!session?.user?.name) redirect("/settings/email?section=test&updated=0");
-  try {
-    await sendTestEmail(session.user.name);
-    redirect("/settings/email?section=test&updated=1");
-  } catch {
+  const email = (formData.get("email") as string | null)?.trim() ?? "";
+  if (!email) {
     redirect("/settings/email?section=test&updated=0");
   }
+  let sent = false;
+  try {
+    await sendTestEmail(email);
+    sent = true;
+  } catch {
+    // SMTP not configured or delivery failed
+  }
+  redirect(`/settings/email?section=test&updated=${sent ? "1" : "0"}`);
 }
 
 async function saveDepositTemplate(formData: FormData) {
