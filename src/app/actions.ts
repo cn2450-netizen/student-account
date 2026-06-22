@@ -219,6 +219,24 @@ export async function assignAccountRequest(requestId: string, assign: boolean) {
   return { success: true };
 }
 
+// ─── Delete parent account (admin only) ─────────────────────────────────────
+
+export async function deleteParentAccount(userId: string) {
+  const session = await getCurrentSession();
+  if (!session?.user || !can(session.user.role, "admin")) {
+    return { error: "Unauthorized" };
+  }
+
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true, role: true } });
+  if (!user || user.role !== "PARENT") {
+    return { error: "Account not found" };
+  }
+
+  await prisma.user.delete({ where: { id: userId } });
+  revalidatePath("/admin/parents");
+  return { success: true };
+}
+
 // ─── Create student (parent) ─────────────────────────────────────────────────
 
 const StudentSchema = z.object({

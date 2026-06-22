@@ -1,8 +1,11 @@
 import { requirePermission } from "@/lib/secure-page";
 import { prisma } from "@/lib/prisma";
+import { can } from "@/lib/rbac";
+import { DeleteParentButton } from "@/components/delete-parent-button";
 
 export default async function AdminParentsPage() {
-  await requirePermission("allStudents");
+  const currentUser = await requirePermission("allStudents");
+  const canDelete = can(currentUser.role, "admin");
 
   const parents = await prisma.user.findMany({
     where: { role: "PARENT" },
@@ -95,6 +98,14 @@ export default async function AdminParentsPage() {
                               <span className="font-medium text-slate-300">Created:</span>{" "}
                               <span className="text-slate-400">{new Date(p.createdAt).toLocaleString()}</span>
                             </p>
+                            {canDelete && (
+                              <div className="pt-2">
+                                <DeleteParentButton
+                                  userId={p.id}
+                                  name={p.profile ? `${p.profile.firstName} ${p.profile.lastName}` : p.username}
+                                />
+                              </div>
+                            )}
                           </div>
 
                           <div className="space-y-2">
