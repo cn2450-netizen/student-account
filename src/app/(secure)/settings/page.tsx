@@ -48,6 +48,12 @@ export default async function SettingsPage() {
       description: "Audit trail of every correction made to a fundraising entry — who, what, why, and when.",
       visible: true,
     },
+    {
+      href: "/settings/backups",
+      title: "Backups",
+      description: "Back up the database to a local path, USB drive, or network share — manually or on a schedule.",
+      visible: true,
+    },
   ];
 
   return (

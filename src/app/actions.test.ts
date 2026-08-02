@@ -28,6 +28,11 @@ vi.mock("@/lib/email", () => ({
   sendStaffInviteEmail: vi.fn().mockResolvedValue(true),
 }));
 
+vi.mock("@/lib/backup", () => ({
+  runBackup: vi.fn().mockResolvedValue({ success: true, filename: "moneyfinder-test.sql.gz" }),
+  saveBackupSchedule: vi.fn().mockResolvedValue(undefined),
+}));
+
 vi.mock("bcryptjs", () => ({
   hash: vi.fn().mockResolvedValue("mocked-bcrypt-hash"),
   compare: vi.fn(),
@@ -40,6 +45,7 @@ vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 import { prisma } from "@/lib/prisma";
 import { getCurrentSession } from "@/lib/auth";
 import { sendDepositReceipt, sendAccountApprovedEmail, sendFundRequestDecisionEmail, sendPasswordResetEmail, sendStaffInviteEmail } from "@/lib/email";
+import { runBackup, saveBackupSchedule } from "@/lib/backup";
 import {
   advanceGrades,
   approveAccountRequest,
@@ -48,6 +54,8 @@ import {
   requestPasswordReset,
   resetPasswordWithToken,
   resetUserPassword,
+  runBackupNow,
+  saveBackupConfig,
   createStaffUser,
   unlockAccount,
   updateStaffEmail,
@@ -1159,5 +1167,95 @@ describe("editFundraisingEntry()", () => {
       where: { id: "entry-1" },
       data: { amount: 10, description: "Candy sale" },
     });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// runBackupNow() / saveBackupConfig()
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("runBackupNow()", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("returns Unauthorized for a role without settings permission", async () => {
+    vi.mocked(getCurrentSession).mockResolvedValue(treasurerSession as never);
+    expect(await runBackupNow()).toEqual({ error: "Unauthorized" });
+    expect(runBackup).not.toHaveBeenCalled();
+  });
+
+  it("allows PRESIDENT (not just ADMIN)", async () => {
+    vi.mocked(getCurrentSession).mockResolvedValue(presidentSession as never);
+    const result = await runBackupNow();
+    expect(result).toEqual({ success: true, filename: "moneyfinder-test.sql.gz" });
+  });
+
+  it("forces the backup regardless of schedule state", async () => {
+    vi.mocked(getCurrentSession).mockResolvedValue(adminSession as never);
+    await runBackupNow();
+    expect(runBackup).toHaveBeenCalledWith({ force: true });
+  });
+
+  it("returns an error when the backup fails", async () => {
+    vi.mocked(getCurrentSession).mockResolvedValue(adminSession as never);
+    vi.mocked(runBackup).mockResolvedValueOnce({ success: false, error: "pg_dump exited with code 1" });
+    const result = await runBackupNow();
+    expect(result).toEqual({ error: "pg_dump exited with code 1" });
+  });
+});
+
+describe("saveBackupConfig()", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  function formData(fields: Record<string, string>) {
+    const fd = new FormData();
+    for (const [k, v] of Object.entries(fields)) fd.set(k, v);
+    return fd;
+  }
+
+  const VALID_FIELDS = { destinationPath: "/mnt/backup", frequencyHours: "24", retentionCount: "30" };
+
+  it("returns Unauthorized for a role without settings permission", async () => {
+    vi.mocked(getCurrentSession).mockResolvedValue(treasurerSession as never);
+    const result = await saveBackupConfig({}, formData(VALID_FIELDS));
+    expect(result).toEqual({ error: "Unauthorized" });
+    expect(saveBackupSchedule).not.toHaveBeenCalled();
+  });
+
+  it("requires a destination path", async () => {
+    vi.mocked(getCurrentSession).mockResolvedValue(adminSession as never);
+    const result = await saveBackupConfig({}, formData({ ...VALID_FIELDS, destinationPath: "" }));
+    expect(result.error).toMatch(/destination path/i);
+  });
+
+  it("rejects a non-positive frequency", async () => {
+    vi.mocked(getCurrentSession).mockResolvedValue(adminSession as never);
+    const result = await saveBackupConfig({}, formData({ ...VALID_FIELDS, frequencyHours: "0" }));
+    expect(result.error).toMatch(/frequency/i);
+  });
+
+  it("saves the parsed config, defaulting scheduleEnabled to false when unchecked", async () => {
+    vi.mocked(getCurrentSession).mockResolvedValue(presidentSession as never);
+
+    const result = await saveBackupConfig({}, formData(VALID_FIELDS));
+
+    expect(saveBackupSchedule).toHaveBeenCalledWith({
+      destinationPath: "/mnt/backup",
+      scheduleEnabled: false,
+      frequencyHours: 24,
+      retentionCount: 30,
+    });
+    expect(result).toEqual({ success: true });
+  });
+
+  it("saves scheduleEnabled true when the checkbox is checked", async () => {
+    vi.mocked(getCurrentSession).mockResolvedValue(adminSession as never);
+
+    const fd = formData(VALID_FIELDS);
+    fd.set("scheduleEnabled", "on");
+    await saveBackupConfig({}, fd);
+
+    expect(saveBackupSchedule).toHaveBeenCalledWith(
+      expect.objectContaining({ scheduleEnabled: true }),
+    );
   });
 });

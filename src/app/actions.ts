@@ -10,6 +10,7 @@ import { prisma } from "@/lib/prisma";
 import { getCurrentSession } from "@/lib/auth";
 import { can } from "@/lib/rbac";
 import { sendDepositReceipt, sendAccountApprovedEmail, sendWithdrawReceipt, sendFundRequestDecisionEmail, sendPasswordResetEmail, sendStaffInviteEmail, resendReceiptEmail as resendReceiptEmailInternal } from "@/lib/email";
+import { runBackup, saveBackupSchedule } from "@/lib/backup";
 
 // ─── Change password on first login ─────────────────────────────────────────
 
@@ -1126,4 +1127,44 @@ export async function unlockAccount(
   } catch { /* email failure must not fail the unlock */ }
 
   return { success: true, emailSent };
+}
+
+// ─── President/Admin: database backups ───────────────────────────────────────
+
+export async function runBackupNow(): Promise<{ error?: string; success?: boolean; filename?: string }> {
+  const session = await getCurrentSession();
+  if (!session?.user || !can(session.user.role, "settings")) return { error: "Unauthorized" };
+
+  const result = await runBackup({ force: true });
+  revalidatePath("/settings/backups");
+
+  if (!result.success) return { error: result.error ?? "Backup failed" };
+  return { success: true, filename: result.filename };
+}
+
+const BackupScheduleSchema = z.object({
+  destinationPath: z.string().min(1, "Destination path is required"),
+  scheduleEnabled: z.boolean(),
+  frequencyHours: z.coerce.number().positive("Frequency must be a positive number of hours"),
+  retentionCount: z.coerce.number().int().positive("Retention must be a positive whole number"),
+});
+
+export async function saveBackupConfig(
+  _prev: { error?: string; success?: boolean },
+  formData: FormData,
+): Promise<{ error?: string; success?: boolean }> {
+  const session = await getCurrentSession();
+  if (!session?.user || !can(session.user.role, "settings")) return { error: "Unauthorized" };
+
+  const parsed = BackupScheduleSchema.safeParse({
+    destinationPath: formData.get("destinationPath"),
+    scheduleEnabled: formData.get("scheduleEnabled") === "on",
+    frequencyHours: formData.get("frequencyHours"),
+    retentionCount: formData.get("retentionCount"),
+  });
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
+
+  await saveBackupSchedule(parsed.data);
+  revalidatePath("/settings/backups");
+  return { success: true };
 }
