@@ -34,7 +34,7 @@ export default async function AdminFundraisingPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-xl font-semibold text-slate-100">All Fundraising</h2>
+        <h2 className="text-xl font-semibold text-slate-100">Funds Applied</h2>
         <p className="text-sm text-slate-400">
           {entries.length} entr{entries.length === 1 ? "y" : "ies"} — Total:{" "}
           <span className="text-emerald-400 font-semibold">${total.toFixed(2)}</span>

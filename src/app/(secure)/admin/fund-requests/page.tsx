@@ -55,7 +55,7 @@ export default async function FundRequestsPage() {
   return (
     <div className="space-y-8">
       <div>
-        <h2 className="text-xl font-semibold text-slate-100">Fund Requests</h2>
+        <h2 className="text-xl font-semibold text-slate-100">Funds Requested</h2>
         <p className="mt-1 text-sm text-slate-400">
           Review and approve or deny parent fund requests. Approved requests automatically create an expense entry.
         </p>
