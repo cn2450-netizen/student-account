@@ -18,7 +18,8 @@ export function CreateStaffUserForm() {
       <div>
         <h3 className="text-sm font-semibold text-slate-200">Create Staff Account</h3>
         <p className="text-xs text-slate-500 mt-0.5">
-          Create a new Admin or Treasurer account. Parent accounts are created through the registration form.
+          Create a new Admin or Treasurer account. They&apos;ll get an email to set their password.
+          Parent accounts are created through the registration form.
         </p>
       </div>
 
@@ -27,32 +28,21 @@ export function CreateStaffUserForm() {
       )}
       {state.success && (
         <p className="rounded-lg bg-emerald-900/40 px-3 py-2 text-sm text-emerald-400">
-          User created successfully.
+          {state.emailSent
+            ? "User created — invite email sent."
+            : "User created, but the invite email could not be sent. Check your SMTP settings."}
         </p>
       )}
 
-      <form ref={formRef} action={dispatch} className="grid grid-cols-1 gap-3 sm:grid-cols-4">
+      <form ref={formRef} action={dispatch} className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <div className="sm:col-span-1">
-          <label className="block text-xs text-slate-400 mb-1">Username</label>
+          <label className="block text-xs text-slate-400 mb-1">Email</label>
           <input
             name="username"
+            type="email"
             required
-            minLength={3}
             autoComplete="off"
-            placeholder="e.g. treasurer1"
-            className="w-full rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-500"
-          />
-        </div>
-
-        <div className="sm:col-span-1">
-          <label className="block text-xs text-slate-400 mb-1">Password</label>
-          <input
-            name="password"
-            type="password"
-            required
-            minLength={8}
-            autoComplete="new-password"
-            placeholder="Min. 8 characters"
+            placeholder="e.g. treasurer@school.org"
             className="w-full rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-500"
           />
         </div>

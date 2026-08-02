@@ -6,7 +6,7 @@ vi.mock("@/lib/prisma", () => ({
   prisma: {
     appConfig: { findUnique: vi.fn(), upsert: vi.fn() },
     accountRequest: { findUnique: vi.fn(), update: vi.fn() },
-    user: { create: vi.fn(), findUnique: vi.fn(), update: vi.fn() },
+    user: { create: vi.fn(), findUnique: vi.fn(), findFirst: vi.fn(), update: vi.fn() },
     parentProfile: { findUnique: vi.fn(), create: vi.fn() },
     student: { findMany: vi.fn(), findUnique: vi.fn(), update: vi.fn() },
     fundraisingEntry: { create: vi.fn() },
@@ -24,6 +24,7 @@ vi.mock("@/lib/email", () => ({
   sendWithdrawReceipt: vi.fn().mockResolvedValue(true),
   sendFundRequestDecisionEmail: vi.fn().mockResolvedValue(true),
   sendPasswordResetEmail: vi.fn().mockResolvedValue(true),
+  sendStaffInviteEmail: vi.fn().mockResolvedValue(true),
 }));
 
 vi.mock("bcryptjs", () => ({
@@ -37,7 +38,7 @@ vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 
 import { prisma } from "@/lib/prisma";
 import { getCurrentSession } from "@/lib/auth";
-import { sendDepositReceipt, sendAccountApprovedEmail, sendFundRequestDecisionEmail, sendPasswordResetEmail } from "@/lib/email";
+import { sendDepositReceipt, sendAccountApprovedEmail, sendFundRequestDecisionEmail, sendPasswordResetEmail, sendStaffInviteEmail } from "@/lib/email";
 import {
   advanceGrades,
   approveAccountRequest,
@@ -46,6 +47,7 @@ import {
   requestPasswordReset,
   resetPasswordWithToken,
   resetUserPassword,
+  createStaffUser,
 } from "@/app/actions";
 
 // ── Typed references to the mocked prisma sub-objects ────────────────────────
@@ -812,6 +814,93 @@ describe("resetUserPassword()", () => {
     vi.mocked(sendPasswordResetEmail).mockResolvedValueOnce(false);
 
     const result = await resetUserPassword("user-1");
+
+    expect(result).toEqual({ success: true, emailSent: false });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// createStaffUser()
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("createStaffUser()", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mp.user.findUnique.mockResolvedValue(null as never);
+    mp.user.findFirst.mockResolvedValue(null as never);
+    mp.user.create.mockResolvedValue({ id: "new-staff-id", username: "treasurer@school.org" } as never);
+    mp.passwordResetToken.create.mockResolvedValue({} as never);
+  });
+
+  function formData(fields: Record<string, string>) {
+    const fd = new FormData();
+    for (const [k, v] of Object.entries(fields)) fd.set(k, v);
+    return fd;
+  }
+
+  it("returns Unauthorized for a non-admin session", async () => {
+    vi.mocked(getCurrentSession).mockResolvedValue(treasurerSession as never);
+    const result = await createStaffUser({}, formData({ username: "treasurer@school.org", role: "TREASURER" }));
+    expect(result).toEqual({ error: "Unauthorized" });
+  });
+
+  it("rejects a non-email username", async () => {
+    vi.mocked(getCurrentSession).mockResolvedValue(adminSession as never);
+    const result = await createStaffUser({}, formData({ username: "treasurer1", role: "TREASURER" }));
+    expect(result.error).toMatch(/valid email/i);
+    expect(mp.user.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects a duplicate username", async () => {
+    vi.mocked(getCurrentSession).mockResolvedValue(adminSession as never);
+    mp.user.findUnique.mockResolvedValue({ id: "existing" } as never);
+    const result = await createStaffUser({}, formData({ username: "treasurer@school.org", role: "TREASURER" }));
+    expect(result.error).toMatch(/already exists/i);
+  });
+
+  it("rejects a second TREASURER account", async () => {
+    vi.mocked(getCurrentSession).mockResolvedValue(adminSession as never);
+    mp.user.findFirst.mockResolvedValue({ username: "existing-treasurer@school.org" } as never);
+    const result = await createStaffUser({}, formData({ username: "new-treasurer@school.org", role: "TREASURER" }));
+    expect(result.error).toMatch(/treasurer account already exists/i);
+  });
+
+  it("creates the user with an unusable placeholder hash and forcePasswordChange true", async () => {
+    vi.mocked(getCurrentSession).mockResolvedValue(adminSession as never);
+
+    await createStaffUser({}, formData({ username: "Treasurer@School.org", role: "TREASURER" }));
+
+    expect(mp.user.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          username: "treasurer@school.org",
+          role: "TREASURER",
+          forcePasswordChange: true,
+          passwordHash: expect.any(String),
+        }),
+      }),
+    );
+  });
+
+  it("emails an invite link and returns success with emailSent status", async () => {
+    vi.mocked(getCurrentSession).mockResolvedValue(adminSession as never);
+
+    const result = await createStaffUser({}, formData({ username: "treasurer@school.org", role: "TREASURER" }));
+
+    expect(sendStaffInviteEmail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: "treasurer@school.org",
+        resetUrl: expect.stringContaining("/reset-password?token="),
+      }),
+    );
+    expect(result).toEqual({ success: true, emailSent: true });
+  });
+
+  it("still returns success when the invite email fails to send", async () => {
+    vi.mocked(getCurrentSession).mockResolvedValue(adminSession as never);
+    vi.mocked(sendStaffInviteEmail).mockResolvedValueOnce(false);
+
+    const result = await createStaffUser({}, formData({ username: "treasurer@school.org", role: "TREASURER" }));
 
     expect(result).toEqual({ success: true, emailSent: false });
   });

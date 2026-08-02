@@ -9,7 +9,7 @@ import { randomBytes, createHash } from "crypto";
 import { prisma } from "@/lib/prisma";
 import { getCurrentSession } from "@/lib/auth";
 import { can } from "@/lib/rbac";
-import { sendDepositReceipt, sendAccountApprovedEmail, sendWithdrawReceipt, sendFundRequestDecisionEmail, sendPasswordResetEmail, resendReceiptEmail as resendReceiptEmailInternal } from "@/lib/email";
+import { sendDepositReceipt, sendAccountApprovedEmail, sendWithdrawReceipt, sendFundRequestDecisionEmail, sendPasswordResetEmail, sendStaffInviteEmail, resendReceiptEmail as resendReceiptEmailInternal } from "@/lib/email";
 
 // ─── Change password on first login ─────────────────────────────────────────
 
@@ -641,26 +641,25 @@ export async function deleteUser(userId: string): Promise<{ error?: string; succ
 // ─── Admin: create a staff user (ADMIN or TREASURER) ───────────────────────
 
 const CreateStaffUserSchema = z.object({
-  username: z.string().min(3, "Username must be at least 3 characters"),
-  password: z.string().min(8, "Password must be at least 8 characters"),
+  username: z.string().email("A valid email address is required"),
   role: z.enum(["ADMIN", "PRESIDENT", "TREASURER", "FUNDRAISING_MANAGER", "BOARD_MEMBER"]),
 });
 
 export async function createStaffUser(
-  _prev: { error?: string; success?: boolean },
+  _prev: { error?: string; success?: boolean; emailSent?: boolean },
   formData: FormData
-): Promise<{ error?: string; success?: boolean }> {
+): Promise<{ error?: string; success?: boolean; emailSent?: boolean }> {
   const session = await getCurrentSession();
   if (!session?.user || !can(session.user.role, "admin")) return { error: "Unauthorized" };
 
   const parsed = CreateStaffUserSchema.safeParse({
     username: formData.get("username"),
-    password: formData.get("password"),
     role: formData.get("role"),
   });
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
 
-  const { username, password, role } = parsed.data;
+  const { role } = parsed.data;
+  const username = parsed.data.username.toLowerCase().trim();
 
   const exists = await prisma.user.findUnique({ where: { username } });
   if (exists) return { error: "A user with that username already exists" };
@@ -671,13 +670,22 @@ export async function createStaffUser(
     if (existing) return { error: `A Treasurer account already exists (${existing.username}). Delete it before creating a new one.` };
   }
 
-  const passwordHash = await hash(password, 12);
-  await prisma.user.create({
-    data: { username, passwordHash, role, forcePasswordChange: false },
+  // No password is collected here — set an unusable random placeholder;
+  // the new staff member sets their real password via the emailed link below.
+  const passwordHash = await hash(randomBytes(24).toString("hex"), 12);
+  const user = await prisma.user.create({
+    data: { username, passwordHash, role, forcePasswordChange: true },
   });
 
   revalidatePath("/settings/users");
-  return { success: true };
+
+  let emailSent = false;
+  try {
+    const resetUrl = await createPasswordResetLink(user.id);
+    emailSent = await sendStaffInviteEmail({ to: username, resetUrl });
+  } catch { /* email failure must not fail the account creation */ }
+
+  return { success: true, emailSent };
 }
 
 // ─── Parent: submit a fund request ───────────────────────────────────────────

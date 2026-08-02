@@ -241,6 +241,45 @@ export async function sendAccountApprovedEmail(opts: {
   return emailSent;
 }
 
+const STAFF_INVITE_SUBJECT = "Your Student Account Tracker account is ready — set your password";
+const STAFF_INVITE_BODY = [
+  "<p>Hi,</p>",
+  "<p>An administrator has created a Student Account Tracker account for you. Click the link below to set your password and log in:</p>",
+  '<p><a href="{{resetUrl}}">Set your password</a></p>',
+  "<p>This link expires in 1 hour and can only be used once. If you have any questions, please contact your school organization.</p>",
+].join("\n");
+
+export async function sendStaffInviteEmail(opts: {
+  to: string;
+  resetUrl: string;
+}): Promise<boolean> {
+  const cfg = await getEmailConfig();
+  const vars: Record<string, string> = { resetUrl: opts.resetUrl };
+  const subject = render(STAFF_INVITE_SUBJECT, vars);
+  const html = render(STAFF_INVITE_BODY, vars);
+
+  const emailSent = await trySend(cfg, opts.to, subject, html);
+
+  try {
+    await prisma.emailReceipt.create({
+      data: {
+        type: "approval",
+        toEmail: opts.to,
+        toName: opts.to,
+        subject,
+        htmlBody: html,
+        studentId: null,
+        studentName: null,
+        amount: null,
+        description: null,
+        emailSent,
+      },
+    });
+  } catch { /* receipt logging is best-effort */ }
+
+  return emailSent;
+}
+
 // "status" only ever carries "DENIED" today (approveFundRequest sends its
 // own withdrawal receipt instead) — kept as a field so call sites stay
 // explicit about which notification this is.
