@@ -4,8 +4,8 @@ copy application files to box manually
     /home/student account
 uncompress file .tar
     tar -xvf "student account.tar"
-run from install dir 
-    sudo bash install-ubuntu.sh
+run from install dir
+    sudo bash scripts/install-ubuntu.sh
 stop application
     sudo systemctl stop moneyfinder
 stat application

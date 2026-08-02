@@ -43,6 +43,7 @@ run_as_app_user() {
 }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 # ── Interactive config collection ─────────────────────────────────────────────
 ask() {
@@ -89,14 +90,14 @@ DEFAULT_USER="${SUDO_USER:-${USER}}"
 [[ "${DEFAULT_USER}" == "root" ]] && DEFAULT_USER="usfsadmin"
 
 # Default: app files live alongside this script
-APP_SOURCE="${APP_SOURCE:-${SCRIPT_DIR}}"
+APP_SOURCE="${APP_SOURCE:-${REPO_ROOT}}"
 # GITHUB_REPO can be set to clone directly instead of rsync from a local source.
 # When set, APP_SOURCE is not required and auto-updates will be enabled automatically.
 GITHUB_REPO="${GITHUB_REPO:-cn2450-netizen/student-account}"
 UPDATE_BRANCH="${UPDATE_BRANCH:-master}"
 
 if [[ -z "${GITHUB_REPO:-}" ]]; then
-  [[ -f "${APP_SOURCE}/package.json" ]] || die "package.json not found in '${APP_SOURCE}'. Place app files next to this script or set APP_SOURCE=/path/to/app."
+  [[ -f "${APP_SOURCE}/package.json" ]] || die "package.json not found in '${APP_SOURCE}'. Run from a full repo checkout (script expects to live in <repo>/scripts/) or set APP_SOURCE=/path/to/app."
 fi
 
 APP_USER="${APP_USER:-}"
@@ -597,7 +598,7 @@ install_auto_updater() {
 
   info "Installing auto-update script to ${UPDATER_BIN}"
   as_root install -m 0755 -o root -g root \
-    "${APP_DIR}/scripts/linux/auto-update.sh" "${UPDATER_BIN}"
+    "${APP_DIR}/scripts/auto-update.sh" "${UPDATER_BIN}"
 
   info "Writing systemd service unit"
   as_root tee "${UPDATER_SVC}" >/dev/null <<SVCEOF

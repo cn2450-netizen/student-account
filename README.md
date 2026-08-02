@@ -27,7 +27,7 @@ For local development (`npm run db:seed`), the password is also randomly generat
 ### Production install (Ubuntu server)
 
 ```bash
-sudo bash install-ubuntu.sh
+sudo bash scripts/install-ubuntu.sh
 ```
 
 The script installs Node.js, PostgreSQL, nginx, and the app as a systemd service. It generates a random DB password and admin password, prints them in the install summary, and writes `.env` automatically. See the script header for all overridable environment variables.

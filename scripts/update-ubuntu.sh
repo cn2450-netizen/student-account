@@ -7,8 +7,9 @@
 #  Usage:
 #    sudo bash update-ubuntu.sh
 #
-#  Place this script next to your updated app files (same folder as package.json),
-#  or set APP_SOURCE to the folder containing the new files:
+#  Defaults to the repo this script lives in (../ relative to scripts/).
+#  To push files from elsewhere, set APP_SOURCE to the folder containing
+#  the new files (same folder as package.json):
 #    export APP_SOURCE=/path/to/app
 #    sudo bash update-ubuntu.sh
 # =============================================================================
@@ -34,10 +35,11 @@ fi
 as_root() { [[ -n "${SUDO}" ]] && ${SUDO} "$@" || "$@"; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 # ── Config ────────────────────────────────────────────────────────────────────
 APP_DIR="${APP_DIR:-/opt/moneyfinder}"
-APP_SOURCE="${APP_SOURCE:-${SCRIPT_DIR}}"
+APP_SOURCE="${APP_SOURCE:-${REPO_ROOT}}"
 
 [[ -d "${APP_DIR}" ]]           || die "Install directory '${APP_DIR}' not found. Run install-ubuntu.sh first."
 [[ -f "${APP_DIR}/.env" ]]      || die ".env not found in '${APP_DIR}'. Run install-ubuntu.sh first."
@@ -166,10 +168,10 @@ fi
 
 # Resume auto-update timer
 if "${UPDATER_WAS_ACTIVE}"; then
-  # Refresh the updater binary in case scripts/linux/auto-update.sh was updated
-  if [[ -f "${APP_DIR}/scripts/linux/auto-update.sh" ]]; then
+  # Refresh the updater binary in case scripts/auto-update.sh was updated
+  if [[ -f "${APP_DIR}/scripts/auto-update.sh" ]]; then
     as_root install -m 0755 -o root -g root \
-      "${APP_DIR}/scripts/linux/auto-update.sh" "/usr/local/bin/moneyfinder-auto-update"
+      "${APP_DIR}/scripts/auto-update.sh" "/usr/local/bin/moneyfinder-auto-update"
     ok "Auto-update script refreshed"
   fi
   as_root systemctl start moneyfinder-updater.timer

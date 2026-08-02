@@ -147,9 +147,9 @@ git -C "${APP_DIR}" reset --hard "origin/${BRANCH}"
 ok "Code updated to ${REMOTE_SHA:0:12}"
 
 # Self-refresh the auto-update binary in case that script changed
-if [[ -f "${APP_DIR}/scripts/linux/auto-update.sh" ]]; then
+if [[ -f "${APP_DIR}/scripts/auto-update.sh" ]]; then
   as_root install -m 0755 -o root -g root \
-    "${APP_DIR}/scripts/linux/auto-update.sh" "/usr/local/bin/moneyfinder-auto-update" 2>/dev/null || true
+    "${APP_DIR}/scripts/auto-update.sh" "/usr/local/bin/moneyfinder-auto-update" 2>/dev/null || true
   ok "Auto-update binary refreshed"
 fi
 
