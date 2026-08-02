@@ -454,6 +454,58 @@ export async function addFundraisingEntry(
   return { success: true };
 }
 
+// ─── Correct a fundraising entry (audit-logged) ──────────────────────────────
+
+const EditEntrySchema = z.object({
+  amount: z.coerce.number().positive("Amount must be positive"),
+  description: z.string().min(1, "Description is required"),
+  reason: z.string().min(1, "A reason is required for the correction"),
+});
+
+export async function editFundraisingEntry(
+  entryId: string,
+  formData: FormData,
+): Promise<{ error?: string; success?: boolean }> {
+  const session = await getCurrentSession();
+  if (!session?.user || !can(session.user.role, "manageFundraising")) return { error: "Unauthorized" };
+
+  const parsed = EditEntrySchema.safeParse({
+    amount: formData.get("amount"),
+    description: formData.get("description"),
+    reason: formData.get("reason"),
+  });
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
+
+  const entry = await prisma.fundraisingEntry.findUnique({ where: { id: entryId } });
+  if (!entry) return { error: "Entry not found" };
+
+  const { amount, description, reason } = parsed.data;
+
+  await prisma.$transaction([
+    prisma.fundraisingEntryEdit.create({
+      data: {
+        entryId,
+        previousAmount: entry.amount,
+        newAmount: amount,
+        previousDescription: entry.description,
+        newDescription: description,
+        reason: reason.trim(),
+        editedBy: session.user.name,
+      },
+    }),
+    prisma.fundraisingEntry.update({
+      where: { id: entryId },
+      data: { amount, description },
+    }),
+  ]);
+
+  revalidatePath("/admin/fundraising");
+  revalidatePath("/fundraising");
+  revalidatePath("/settings/fundraising-audit");
+  revalidatePath("/dashboard");
+  return { success: true };
+}
+
 // ─── Add expense entry ────────────────────────────────────────────────────────
 
 export async function addExpenseEntry(

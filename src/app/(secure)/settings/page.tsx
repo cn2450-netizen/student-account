@@ -42,6 +42,12 @@ export default async function SettingsPage() {
       description: "View and unlock permanently locked user accounts.",
       visible: can(user.role, "unlockAccounts"),
     },
+    {
+      href: "/settings/fundraising-audit",
+      title: "Fundraising Correction Log",
+      description: "Audit trail of every correction made to a fundraising entry — who, what, why, and when.",
+      visible: true,
+    },
   ];
 
   return (

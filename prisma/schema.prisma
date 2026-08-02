@@ -127,6 +127,23 @@ model FundraisingEntry {
   description String
   date        DateTime @default(now())
   createdAt   DateTime @default(now())
+  edits       FundraisingEntryEdit[]
+}
+
+// Audit trail for corrections made to a fundraising entry after the fact
+// (e.g. a data-entry typo). One row per edit — the entry itself always
+// reflects the latest values.
+model FundraisingEntryEdit {
+  id                  String           @id @default(cuid())
+  entryId             String
+  entry               FundraisingEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  previousAmount      Decimal          @db.Decimal(10, 2)
+  newAmount           Decimal          @db.Decimal(10, 2)
+  previousDescription String
+  newDescription      String
+  reason              String
+  editedBy            String
+  editedAt            DateTime         @default(now())
 }
 
 // ─── Expense entries ─────────────────────────────────────────────────────────

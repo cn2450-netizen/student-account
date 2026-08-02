@@ -9,7 +9,8 @@ vi.mock("@/lib/prisma", () => ({
     user: { create: vi.fn(), findUnique: vi.fn(), findFirst: vi.fn(), update: vi.fn() },
     parentProfile: { findUnique: vi.fn(), create: vi.fn() },
     student: { findMany: vi.fn(), findUnique: vi.fn(), update: vi.fn() },
-    fundraisingEntry: { create: vi.fn() },
+    fundraisingEntry: { create: vi.fn(), findUnique: vi.fn(), update: vi.fn() },
+    fundraisingEntryEdit: { create: vi.fn() },
     fundRequest: { findUnique: vi.fn(), update: vi.fn() },
     passwordResetToken: { findFirst: vi.fn(), findUnique: vi.fn(), create: vi.fn(), update: vi.fn() },
     $transaction: vi.fn(),
@@ -50,6 +51,7 @@ import {
   createStaffUser,
   unlockAccount,
   updateStaffEmail,
+  editFundraisingEntry,
 } from "@/app/actions";
 
 // ── Typed references to the mocked prisma sub-objects ────────────────────────
@@ -63,6 +65,8 @@ const adminSession    = { user: { id: "u-admin",     name: "admin@school.org",  
 const presidentSession = { user: { id: "u-president", name: "president@school.org", role: "PRESIDENT" } };
 const treasurerSession = { user: { id: "u-treasurer", name: "treasurer@school.org", role: "TREASURER" } };
 const parentSession   = { user: { id: "u-parent",    name: "parent@school.org",    role: "PARENT"    } };
+const fundraisingManagerSession = { user: { id: "u-fm", name: "fm@school.org", role: "FUNDRAISING_MANAGER" } };
+const boardMemberSession = { user: { id: "u-board", name: "board@school.org", role: "BOARD_MEMBER" } };
 
 // ─────────────────────────────────────────────────────────────────────────────
 // advanceGrades()
@@ -1062,6 +1066,98 @@ describe("updateStaffEmail()", () => {
     expect(mp.user.update).toHaveBeenCalledWith({
       where: { id: "staff-1" },
       data: { username: "new@school.org" },
+    });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// editFundraisingEntry()
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("editFundraisingEntry()", () => {
+  const EXISTING_ENTRY = { id: "entry-1", amount: 100, description: "Candy sale" };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mp.fundraisingEntry.findUnique.mockResolvedValue(EXISTING_ENTRY as never);
+    mp.$transaction.mockResolvedValue([{}, {}] as never);
+  });
+
+  function formData(fields: Record<string, string>) {
+    const fd = new FormData();
+    for (const [k, v] of Object.entries(fields)) fd.set(k, v);
+    return fd;
+  }
+
+  const VALID_FIELDS = { amount: "10", description: "Candy sale", reason: "Typo — entered $100 instead of $10" };
+
+  it("allows roles with manageFundraising (admin, treasurer, fundraising manager)", async () => {
+    for (const session of [adminSession, treasurerSession, fundraisingManagerSession]) {
+      vi.mocked(getCurrentSession).mockResolvedValue(session as never);
+      const result = await editFundraisingEntry("entry-1", formData(VALID_FIELDS));
+      expect(result).toEqual({ success: true });
+    }
+  });
+
+  it("returns Unauthorized for a board member, who can't create entries either", async () => {
+    vi.mocked(getCurrentSession).mockResolvedValue(boardMemberSession as never);
+    const result = await editFundraisingEntry("entry-1", formData(VALID_FIELDS));
+    expect(result).toEqual({ error: "Unauthorized" });
+    expect(mp.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("returns Unauthorized for president (view-only on this audit trail)", async () => {
+    vi.mocked(getCurrentSession).mockResolvedValue(presidentSession as never);
+    const result = await editFundraisingEntry("entry-1", formData(VALID_FIELDS));
+    expect(result).toEqual({ error: "Unauthorized" });
+  });
+
+  it("requires a reason", async () => {
+    vi.mocked(getCurrentSession).mockResolvedValue(adminSession as never);
+    const result = await editFundraisingEntry("entry-1", formData({ amount: "10", description: "Candy sale", reason: "" }));
+    expect(result.error).toMatch(/reason/i);
+    expect(mp.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("rejects a non-positive amount", async () => {
+    vi.mocked(getCurrentSession).mockResolvedValue(adminSession as never);
+    const result = await editFundraisingEntry("entry-1", formData({ ...VALID_FIELDS, amount: "0" }));
+    expect(result.error).toMatch(/positive/i);
+  });
+
+  it("returns an error when the entry doesn't exist", async () => {
+    vi.mocked(getCurrentSession).mockResolvedValue(adminSession as never);
+    mp.fundraisingEntry.findUnique.mockResolvedValue(null as never);
+    const result = await editFundraisingEntry("missing", formData(VALID_FIELDS));
+    expect(result).toEqual({ error: "Entry not found" });
+  });
+
+  it("logs the previous and new values, reason, and editor in the audit trail", async () => {
+    vi.mocked(getCurrentSession).mockResolvedValue(adminSession as never);
+
+    await editFundraisingEntry("entry-1", formData(VALID_FIELDS));
+
+    expect(mp.fundraisingEntryEdit.create).toHaveBeenCalledWith({
+      data: {
+        entryId: "entry-1",
+        previousAmount: 100,
+        newAmount: 10,
+        previousDescription: "Candy sale",
+        newDescription: "Candy sale",
+        reason: "Typo — entered $100 instead of $10",
+        editedBy: "admin@school.org",
+      },
+    });
+  });
+
+  it("updates the entry's amount and description", async () => {
+    vi.mocked(getCurrentSession).mockResolvedValue(adminSession as never);
+
+    await editFundraisingEntry("entry-1", formData(VALID_FIELDS));
+
+    expect(mp.fundraisingEntry.update).toHaveBeenCalledWith({
+      where: { id: "entry-1" },
+      data: { amount: 10, description: "Candy sale" },
     });
   });
 });
