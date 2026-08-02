@@ -48,6 +48,7 @@ import {
   resetPasswordWithToken,
   resetUserPassword,
   createStaffUser,
+  unlockAccount,
 } from "@/app/actions";
 
 // ── Typed references to the mocked prisma sub-objects ────────────────────────
@@ -901,6 +902,84 @@ describe("createStaffUser()", () => {
     vi.mocked(sendStaffInviteEmail).mockResolvedValueOnce(false);
 
     const result = await createStaffUser({}, formData({ username: "treasurer@school.org", role: "TREASURER" }));
+
+    expect(result).toEqual({ success: true, emailSent: false });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// unlockAccount()
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("unlockAccount()", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mp.user.findUnique.mockResolvedValue({
+      id: "user-1",
+      username: "parent@example.com",
+      permanentLock: true,
+    } as never);
+    mp.user.update.mockResolvedValue({} as never);
+    mp.passwordResetToken.create.mockResolvedValue({} as never);
+  });
+
+  it("returns Unauthorized for a role without unlockAccounts permission", async () => {
+    vi.mocked(getCurrentSession).mockResolvedValue(treasurerSession as never);
+    expect(await unlockAccount("user-1")).toEqual({ error: "Unauthorized" });
+  });
+
+  it("returns an error when the user doesn't exist", async () => {
+    vi.mocked(getCurrentSession).mockResolvedValue(adminSession as never);
+    mp.user.findUnique.mockResolvedValue(null as never);
+    expect(await unlockAccount("missing")).toEqual({ error: "User not found" });
+  });
+
+  it("returns an error when the account isn't permanently locked", async () => {
+    vi.mocked(getCurrentSession).mockResolvedValue(adminSession as never);
+    mp.user.findUnique.mockResolvedValue({ id: "user-1", username: "parent@example.com", permanentLock: false } as never);
+    expect(await unlockAccount("user-1")).toEqual({ error: "Account is not permanently locked" });
+  });
+
+  it("invalidates the password and clears all lockout state", async () => {
+    vi.mocked(getCurrentSession).mockResolvedValue(adminSession as never);
+
+    await unlockAccount("user-1");
+
+    expect(mp.user.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "user-1" },
+        data: expect.objectContaining({
+          passwordHash: expect.any(String),
+          permanentLock: false,
+          forcePasswordChange: true,
+          lockoutCount: 0,
+          loginAttempts: 0,
+          loginWindowStart: null,
+          lockedUntil: null,
+        }),
+      }),
+    );
+  });
+
+  it("emails a reset link and returns success with emailSent status", async () => {
+    vi.mocked(getCurrentSession).mockResolvedValue(adminSession as never);
+
+    const result = await unlockAccount("user-1");
+
+    expect(sendPasswordResetEmail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: "parent@example.com",
+        resetUrl: expect.stringContaining("/reset-password?token="),
+      }),
+    );
+    expect(result).toEqual({ success: true, emailSent: true });
+  });
+
+  it("still returns success when the email fails to send", async () => {
+    vi.mocked(getCurrentSession).mockResolvedValue(adminSession as never);
+    vi.mocked(sendPasswordResetEmail).mockResolvedValueOnce(false);
+
+    const result = await unlockAccount("user-1");
 
     expect(result).toEqual({ success: true, emailSent: false });
   });

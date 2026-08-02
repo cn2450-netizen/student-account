@@ -25,8 +25,8 @@ export default async function LockedAccountsPage() {
       <div>
         <h2 className="text-xl font-semibold text-slate-100">Locked Accounts</h2>
         <p className="mt-1 text-sm text-slate-400">
-          Accounts locked after repeated failed login attempts. Unlocking requires a password
-          change on next login.
+          Accounts locked after repeated failed login attempts. Unlocking invalidates their
+          current password and emails them a link to set a new one.
         </p>
       </div>
 

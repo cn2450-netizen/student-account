@@ -7,7 +7,7 @@ export function UnlockAccountButton({ userId }: { userId: string }) {
   const [confirmed, setConfirmed] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
-  const [done, setDone] = useState(false);
+  const [done, setDone] = useState<{ emailSent?: boolean } | null>(null);
 
   const handleClick = () => {
     if (!confirmed) {
@@ -21,13 +21,17 @@ export function UnlockAccountButton({ userId }: { userId: string }) {
       if (res.error) {
         setError(res.error);
       } else {
-        setDone(true);
+        setDone({ emailSent: res.emailSent });
       }
     });
   };
 
   if (done) {
-    return <span className="text-xs text-emerald-400">Unlocked — password change required</span>;
+    return (
+      <span className="text-xs text-emerald-400">
+        {done.emailSent ? "Unlocked — reset link sent" : "Unlocked, but the reset email could not be sent"}
+      </span>
+    );
   }
 
   return (

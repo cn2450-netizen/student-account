@@ -1005,20 +1005,26 @@ export async function approveGraduationTransfer(
 
 export async function unlockAccount(
   userId: string,
-): Promise<{ error?: string; success?: boolean }> {
+): Promise<{ error?: string; success?: boolean; emailSent?: boolean }> {
   const session = await getCurrentSession();
   if (!session?.user || !can(session.user.role, "unlockAccounts")) return { error: "Unauthorized" };
 
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { id: true, permanentLock: true },
+    select: { id: true, username: true, permanentLock: true },
   });
   if (!user) return { error: "User not found" };
   if (!user.permanentLock) return { error: "Account is not permanently locked" };
 
+  // A permanent lock only follows 15 wrong-password attempts — the account
+  // owner almost certainly doesn't have a working password to log back in
+  // with. Invalidate it and email a reset link instead of just lifting the
+  // lock, same as every other password-recovery path.
+  const passwordHash = await hash(randomBytes(24).toString("hex"), 12);
   await prisma.user.update({
     where: { id: userId },
     data: {
+      passwordHash,
       permanentLock: false,
       forcePasswordChange: true,
       lockoutCount: 0,
@@ -1029,5 +1035,12 @@ export async function unlockAccount(
   });
 
   revalidatePath("/admin/locked-accounts");
-  return { success: true };
+
+  let emailSent = false;
+  try {
+    const resetUrl = await createPasswordResetLink(user.id);
+    emailSent = await sendPasswordResetEmail({ to: user.username, resetUrl });
+  } catch { /* email failure must not fail the unlock */ }
+
+  return { success: true, emailSent };
 }
