@@ -575,7 +575,7 @@ export async function changeMyPassword(
 
 // ─── Admin: reset another user's password ───────────────────────────────────
 
-export async function resetUserPassword(userId: string): Promise<{ error?: string; tempPassword?: string }> {
+export async function resetUserPassword(userId: string): Promise<{ error?: string; success?: boolean; emailSent?: boolean }> {
   const session = await getCurrentSession();
   if (!session?.user || !can(session.user.role, "admin")) return { error: "Unauthorized" };
 
@@ -584,15 +584,13 @@ export async function resetUserPassword(userId: string): Promise<{ error?: strin
 
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { id: true },
+    select: { id: true, username: true },
   });
   if (!user) return { error: "User not found" };
 
-  // Generate a random 12-char temp password
-  const chars = "ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#";
-  const tempPassword = Array.from({ length: 12 }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
-
-  const passwordHash = await hash(tempPassword, 12);
+  // Invalidate the current password with an unusable random placeholder —
+  // the user sets their real password via the emailed reset link below.
+  const passwordHash = await hash(randomBytes(24).toString("hex"), 12);
   await prisma.user.update({
     where: { id: userId },
     data: {
@@ -605,7 +603,13 @@ export async function resetUserPassword(userId: string): Promise<{ error?: strin
     },
   });
 
-  return { tempPassword };
+  let emailSent = false;
+  try {
+    const resetUrl = await createPasswordResetLink(user.id);
+    emailSent = await sendPasswordResetEmail({ to: user.username, resetUrl });
+  } catch { /* email failure must not fail the reset */ }
+
+  return { success: true, emailSent };
 }
 
 // ─── Admin: delete user ───────────────────────────────────────────────────────

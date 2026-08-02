@@ -45,6 +45,7 @@ import {
   denyFundRequest,
   requestPasswordReset,
   resetPasswordWithToken,
+  resetUserPassword,
 } from "@/app/actions";
 
 // ── Typed references to the mocked prisma sub-objects ────────────────────────
@@ -740,5 +741,78 @@ describe("resetPasswordWithToken()", () => {
     expect(mp.passwordResetToken.update).toHaveBeenCalledWith(
       expect.objectContaining({ where: { id: "t1" }, data: expect.objectContaining({ usedAt: expect.any(Date) }) }),
     );
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// resetUserPassword()
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("resetUserPassword()", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mp.user.findUnique.mockResolvedValue({ id: "user-1", username: "parent@example.com" } as never);
+    mp.user.update.mockResolvedValue({} as never);
+    mp.passwordResetToken.create.mockResolvedValue({} as never);
+  });
+
+  it("returns Unauthorized for a non-admin session", async () => {
+    vi.mocked(getCurrentSession).mockResolvedValue(treasurerSession as never);
+    expect(await resetUserPassword("user-1")).toEqual({ error: "Unauthorized" });
+  });
+
+  it("refuses to reset your own password through this path", async () => {
+    vi.mocked(getCurrentSession).mockResolvedValue(adminSession as never);
+    expect(await resetUserPassword("u-admin")).toEqual({
+      error: "Use the change password form to update your own password",
+    });
+  });
+
+  it("returns an error when the target user doesn't exist", async () => {
+    vi.mocked(getCurrentSession).mockResolvedValue(adminSession as never);
+    mp.user.findUnique.mockResolvedValue(null as never);
+    expect(await resetUserPassword("missing")).toEqual({ error: "User not found" });
+  });
+
+  it("invalidates the current password, forces a change, and clears lockout state", async () => {
+    vi.mocked(getCurrentSession).mockResolvedValue(adminSession as never);
+
+    await resetUserPassword("user-1");
+
+    expect(mp.user.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "user-1" },
+        data: expect.objectContaining({
+          forcePasswordChange: true,
+          loginAttempts: 0,
+          loginWindowStart: null,
+          lockedUntil: null,
+          permanentLock: false,
+        }),
+      }),
+    );
+  });
+
+  it("emails a reset link and returns success with emailSent status", async () => {
+    vi.mocked(getCurrentSession).mockResolvedValue(adminSession as never);
+
+    const result = await resetUserPassword("user-1");
+
+    expect(sendPasswordResetEmail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: "parent@example.com",
+        resetUrl: expect.stringContaining("/reset-password?token="),
+      }),
+    );
+    expect(result).toEqual({ success: true, emailSent: true });
+  });
+
+  it("still returns success when the email fails to send", async () => {
+    vi.mocked(getCurrentSession).mockResolvedValue(adminSession as never);
+    vi.mocked(sendPasswordResetEmail).mockResolvedValueOnce(false);
+
+    const result = await resetUserPassword("user-1");
+
+    expect(result).toEqual({ success: true, emailSent: false });
   });
 });

@@ -13,7 +13,7 @@ type User = {
 
 export function UsersTable({ users, currentUserId }: { users: User[]; currentUserId: string }) {
   const [isPending, startTransition] = useTransition();
-  const [tempPasswords, setTempPasswords] = useState<Record<string, string>>({});
+  const [resetStatus, setResetStatus] = useState<Record<string, "sent" | "failed">>({});
   const [error, setError] = useState<string | null>(null);
 
   const handleReset = (userId: string) => {
@@ -22,8 +22,8 @@ export function UsersTable({ users, currentUserId }: { users: User[]; currentUse
       const result = await resetUserPassword(userId);
       if (result.error) {
         setError(result.error);
-      } else if (result.tempPassword) {
-        setTempPasswords((prev) => ({ ...prev, [userId]: result.tempPassword! }));
+      } else {
+        setResetStatus((prev) => ({ ...prev, [userId]: result.emailSent ? "sent" : "failed" }));
       }
     });
   };
@@ -81,9 +81,12 @@ export function UsersTable({ users, currentUserId }: { users: User[]; currentUse
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex items-center justify-end gap-2">
-                    {tempPasswords[user.id] && (
-                      <span className="rounded bg-amber-900/30 px-2 py-0.5 font-mono text-xs text-amber-300">
-                        {tempPasswords[user.id]}
+                    {resetStatus[user.id] === "sent" && (
+                      <span className="text-xs text-emerald-400">Reset link sent</span>
+                    )}
+                    {resetStatus[user.id] === "failed" && (
+                      <span className="text-xs text-rose-400" title="Check SMTP settings">
+                        Could not send email
                       </span>
                     )}
                     {user.id !== currentUserId && (
