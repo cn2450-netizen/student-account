@@ -10,8 +10,6 @@ const CONFIG_KEYS = [
   "email.from",
   "email.depositSubject",
   "email.depositBody",
-  "email.approvalSubject",
-  "email.approvalBody",
   "email.fundRequestDeniedSubject",
   "email.fundRequestDeniedBody",
   "email.withdrawEnabled",
@@ -45,14 +43,6 @@ export const DEFAULT_WITHDRAW_BODY = [
   "<p>If you have any questions, please contact your school organization.</p>",
 ].join("\n");
 
-export const DEFAULT_APPROVAL_SUBJECT = "Your account has been approved";
-export const DEFAULT_APPROVAL_BODY = [
-  "<p>Hi {{parentName}},</p>",
-  "<p>Your registration has been approved. You can now log in to view your student's fundraising account.</p>",
-  '<p><a href="{{loginUrl}}">Log in to your account</a></p>',
-  "<p>If you have any questions, please contact your school organization.</p>",
-].join("\n");
-
 export const DEFAULT_FUND_REQUEST_DENIED_SUBJECT = "Fund request denied — {{studentName}}";
 export const DEFAULT_FUND_REQUEST_DENIED_BODY = [
   "<p>Hi {{parentName}},</p>",
@@ -77,8 +67,6 @@ export async function getEmailConfig() {
     from: m["email.from"] ?? "",
     depositSubject: m["email.depositSubject"] ?? DEFAULT_DEPOSIT_SUBJECT,
     depositBody: m["email.depositBody"] ?? DEFAULT_DEPOSIT_BODY,
-    approvalSubject: m["email.approvalSubject"] ?? DEFAULT_APPROVAL_SUBJECT,
-    approvalBody: m["email.approvalBody"] ?? DEFAULT_APPROVAL_BODY,
     fundRequestDeniedSubject: m["email.fundRequestDeniedSubject"] ?? DEFAULT_FUND_REQUEST_DENIED_SUBJECT,
     fundRequestDeniedBody: m["email.fundRequestDeniedBody"] ?? DEFAULT_FUND_REQUEST_DENIED_BODY,
     withdrawEnabled: m["email.withdrawEnabled"] === "true",
@@ -174,41 +162,6 @@ export async function sendDepositReceipt(opts: {
   return emailSent;
 }
 
-export async function sendApprovalEmail(opts: {
-  to: string;
-  parentName: string;
-  loginUrl: string;
-}): Promise<boolean> {
-  const cfg = await getEmailConfig();
-  const vars: Record<string, string> = {
-    parentName: opts.parentName,
-    loginUrl: opts.loginUrl,
-  };
-  const subject = render(cfg.approvalSubject, vars);
-  const html = render(cfg.approvalBody, vars);
-
-  const emailSent = await trySend(cfg, opts.to, subject, html);
-
-  try {
-    await prisma.emailReceipt.create({
-      data: {
-        type: "approval",
-        toEmail: opts.to,
-        toName: opts.parentName,
-        subject,
-        htmlBody: html,
-        studentId: null,
-        studentName: null,
-        amount: null,
-        description: null,
-        emailSent,
-      },
-    });
-  } catch { /* receipt logging is best-effort */ }
-
-  return emailSent;
-}
-
 const PASSWORD_RESET_SUBJECT = "Reset your WWT Student Account Tracker password";
 const PASSWORD_RESET_BODY = [
   "<p>Hi {{username}},</p>",
@@ -288,6 +241,9 @@ export async function sendAccountApprovedEmail(opts: {
   return emailSent;
 }
 
+// "status" only ever carries "DENIED" today (approveFundRequest sends its
+// own withdrawal receipt instead) — kept as a field so call sites stay
+// explicit about which notification this is.
 export async function sendFundRequestDecisionEmail(opts: {
   to: string;
   parentName: string;
@@ -295,7 +251,7 @@ export async function sendFundRequestDecisionEmail(opts: {
   studentId?: string;
   amount: string;
   reason: string;
-  status: "APPROVED" | "DENIED";
+  status: "DENIED";
   date: string;
 }): Promise<boolean> {
   const cfg = await getEmailConfig();
@@ -307,19 +263,15 @@ export async function sendFundRequestDecisionEmail(opts: {
     date: opts.date,
   };
 
-  const subject = opts.status === "APPROVED"
-    ? render(cfg.approvalSubject, vars)
-    : render(cfg.fundRequestDeniedSubject, vars);
-  const html = opts.status === "APPROVED"
-    ? render(cfg.approvalBody, vars)
-    : render(cfg.fundRequestDeniedBody, vars);
+  const subject = render(cfg.fundRequestDeniedSubject, vars);
+  const html = render(cfg.fundRequestDeniedBody, vars);
 
   const emailSent = await trySend(cfg, opts.to, subject, html);
 
   try {
     await prisma.emailReceipt.create({
       data: {
-        type: opts.status === "APPROVED" ? "approval" : "denial",
+        type: "denial",
         toEmail: opts.to,
         toName: opts.parentName,
         subject,

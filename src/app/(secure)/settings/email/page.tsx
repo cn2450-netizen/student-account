@@ -6,8 +6,6 @@ import {
   sendTestEmail,
   DEFAULT_DEPOSIT_SUBJECT,
   DEFAULT_DEPOSIT_BODY,
-  DEFAULT_APPROVAL_SUBJECT,
-  DEFAULT_APPROVAL_BODY,
   DEFAULT_WITHDRAW_SUBJECT,
   DEFAULT_WITHDRAW_BODY,
 } from "@/lib/email";
@@ -26,7 +24,6 @@ export default async function SettingsEmailPage({
   const testSent       = s.section === "test"     && s.updated === "1";
   const testFailed     = s.section === "test"     && s.updated === "0";
   const depositSaved   = s.section === "deposit"  && s.updated === "1";
-  const approvalSaved  = s.section === "approval" && s.updated === "1";
   const withdrawSaved  = s.section === "withdraw" && s.updated === "1";
 
   return (
@@ -243,62 +240,6 @@ export default async function SettingsEmailPage({
         </form>
       </div>
 
-      {/* ── Account Approval Template ───────────────────────────────────────── */}
-      <div className="rounded-2xl border border-slate-700 bg-slate-900/70 p-5 space-y-4">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h3 className="font-semibold text-cyan-300">Account Approval Template</h3>
-            <p className="text-sm text-slate-400">
-              Sent to the parent when their account registration is approved.
-            </p>
-          </div>
-          {approvalSaved && (
-            <span className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-300">
-              Saved.
-            </span>
-          )}
-        </div>
-
-        <div className="rounded-xl bg-slate-950/60 px-4 py-3 text-xs text-slate-400">
-          Available variables:{" "}
-          {["{{parentName}}", "{{loginUrl}}"].map((v) => (
-            <code key={v} className="mr-2 rounded bg-slate-800 px-1 font-mono text-slate-300">{v}</code>
-          ))}
-        </div>
-
-        <form action={saveApprovalTemplate} className="space-y-4">
-          <div>
-            <label htmlFor="approvalSubject" className="block text-sm font-medium text-slate-300">Subject</label>
-            <input
-              id="approvalSubject" name="approvalSubject" defaultValue={cfg.approvalSubject}
-              placeholder={DEFAULT_APPROVAL_SUBJECT}
-              className="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-3 text-sm text-slate-200 outline-none focus:border-cyan-500/70 focus:ring-1 focus:ring-cyan-500/30"
-            />
-          </div>
-          <div>
-            <label htmlFor="approvalBody" className="block text-sm font-medium text-slate-300">Body (HTML)</label>
-            <textarea
-              id="approvalBody" name="approvalBody" rows={8} defaultValue={cfg.approvalBody}
-              className="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-3 font-mono text-sm text-slate-200 outline-none focus:border-cyan-500/70 focus:ring-1 focus:ring-cyan-500/30"
-            />
-          </div>
-          <div className="flex gap-3">
-            <button
-              type="submit"
-              className="rounded-2xl bg-cyan-500 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-cyan-400"
-            >
-              Save Template
-            </button>
-            <button
-              type="submit" name="reset" value="1"
-              className="rounded-2xl border border-slate-600 px-4 py-2 text-sm font-semibold text-slate-400 transition hover:border-slate-500 hover:text-slate-300"
-            >
-              Reset to Default
-            </button>
-          </div>
-        </form>
-      </div>
-
       {/* ── Withdrawal Notification Template ────────────────────────────────── */}
       <div className="rounded-2xl border border-slate-700 bg-slate-900/70 p-5 space-y-4">
         <div className="flex items-start justify-between gap-4">
@@ -413,18 +354,6 @@ async function saveDepositTemplate(formData: FormData) {
     prisma.appConfig.upsert({ where: { key: "email.depositBody"    }, update: { value: body    }, create: { key: "email.depositBody",    value: body    } }),
   ]);
   redirect("/settings/email?section=deposit&updated=1");
-}
-
-async function saveApprovalTemplate(formData: FormData) {
-  "use server";
-  const reset   = formData.get("reset") === "1";
-  const subject = reset ? DEFAULT_APPROVAL_SUBJECT : ((formData.get("approvalSubject") as string | null)?.trim() ?? DEFAULT_APPROVAL_SUBJECT);
-  const body    = reset ? DEFAULT_APPROVAL_BODY    : ((formData.get("approvalBody")    as string | null) ?? DEFAULT_APPROVAL_BODY);
-  await Promise.all([
-    prisma.appConfig.upsert({ where: { key: "email.approvalSubject" }, update: { value: subject }, create: { key: "email.approvalSubject", value: subject } }),
-    prisma.appConfig.upsert({ where: { key: "email.approvalBody"    }, update: { value: body    }, create: { key: "email.approvalBody",    value: body    } }),
-  ]);
-  redirect("/settings/email?section=approval&updated=1");
 }
 
 async function saveWithdrawTemplate(formData: FormData) {

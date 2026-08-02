@@ -23,13 +23,11 @@ import nodemailer from "nodemailer";
 import {
   getEmailConfig,
   sendDepositReceipt,
-  sendApprovalEmail,
+  sendAccountApprovedEmail,
   sendWithdrawReceipt,
   purgeReceiptsOlderThan5Years,
   DEFAULT_DEPOSIT_SUBJECT,
   DEFAULT_DEPOSIT_BODY,
-  DEFAULT_APPROVAL_SUBJECT,
-  DEFAULT_APPROVAL_BODY,
   DEFAULT_WITHDRAW_SUBJECT,
   DEFAULT_WITHDRAW_BODY,
 } from "@/lib/email";
@@ -75,8 +73,6 @@ describe("getEmailConfig()", () => {
     expect(cfg.from).toBe("");
     expect(cfg.depositSubject).toBe(DEFAULT_DEPOSIT_SUBJECT);
     expect(cfg.depositBody).toBe(DEFAULT_DEPOSIT_BODY);
-    expect(cfg.approvalSubject).toBe(DEFAULT_APPROVAL_SUBJECT);
-    expect(cfg.approvalBody).toBe(DEFAULT_APPROVAL_BODY);
   });
 
   it("reads host, port, TLS, and from address from AppConfig", async () => {
@@ -99,19 +95,15 @@ describe("getEmailConfig()", () => {
     expect((await getEmailConfig()).secure).toBe(false);
   });
 
-  it("reads custom deposit and approval templates from AppConfig", async () => {
+  it("reads a custom deposit template from AppConfig", async () => {
     vi.mocked(prisma.appConfig.findMany).mockResolvedValue([
       { key: "email.depositSubject", value: "Custom deposit subject" },
-      { key: "email.approvalSubject", value: "Custom approval subject" },
       { key: "email.depositBody", value: "<p>Custom body</p>" },
-      { key: "email.approvalBody", value: "<p>Custom approval</p>" },
     ]);
 
     const cfg = await getEmailConfig();
     expect(cfg.depositSubject).toBe("Custom deposit subject");
-    expect(cfg.approvalSubject).toBe("Custom approval subject");
     expect(cfg.depositBody).toBe("<p>Custom body</p>");
-    expect(cfg.approvalBody).toBe("<p>Custom approval</p>");
   });
 
   it("falls back to defaults for missing template keys even when other keys exist", async () => {
@@ -307,13 +299,13 @@ describe("sendDepositReceipt()", () => {
   });
 });
 
-// ── sendApprovalEmail() ───────────────────────────────────────────────────────
+// ── sendAccountApprovedEmail() ────────────────────────────────────────────────
 
-describe("sendApprovalEmail()", () => {
-  const APPROVAL_OPTS = {
+describe("sendAccountApprovedEmail()", () => {
+  const APPROVED_OPTS = {
     to: "parent@example.com",
     parentName: "Jane Doe",
-    loginUrl: "https://school.org/login",
+    resetUrl: "https://school.org/reset-password?token=abc123",
   };
 
   beforeEach(() => {
@@ -323,12 +315,12 @@ describe("sendApprovalEmail()", () => {
   });
 
   it("always creates a receipt record", async () => {
-    await sendApprovalEmail(APPROVAL_OPTS);
+    await sendAccountApprovedEmail(APPROVED_OPTS);
     expect(prisma.emailReceipt.create).toHaveBeenCalledOnce();
   });
 
   it("stores type=approval with null student and amount fields", async () => {
-    await sendApprovalEmail(APPROVAL_OPTS);
+    await sendAccountApprovedEmail(APPROVED_OPTS);
 
     const { data } = vi.mocked(prisma.emailReceipt.create).mock.calls[0][0];
     expect(data.type).toBe("approval");
@@ -339,21 +331,21 @@ describe("sendApprovalEmail()", () => {
   });
 
   it("substitutes parentName in the rendered body", async () => {
-    await sendApprovalEmail(APPROVAL_OPTS);
+    await sendAccountApprovedEmail(APPROVED_OPTS);
 
     const { data } = vi.mocked(prisma.emailReceipt.create).mock.calls[0][0];
     expect(data.htmlBody).toContain("Jane Doe");
   });
 
-  it("substitutes loginUrl in the rendered body", async () => {
-    await sendApprovalEmail(APPROVAL_OPTS);
+  it("substitutes resetUrl in the rendered body", async () => {
+    await sendAccountApprovedEmail(APPROVED_OPTS);
 
     const { data } = vi.mocked(prisma.emailReceipt.create).mock.calls[0][0];
-    expect(data.htmlBody).toContain("https://school.org/login");
+    expect(data.htmlBody).toContain("https://school.org/reset-password?token=abc123");
   });
 
   it("sets emailSent=false when SMTP not configured", async () => {
-    await sendApprovalEmail(APPROVAL_OPTS);
+    await sendAccountApprovedEmail(APPROVED_OPTS);
 
     const { data } = vi.mocked(prisma.emailReceipt.create).mock.calls[0][0];
     expect(data.emailSent).toBe(false);
@@ -363,7 +355,7 @@ describe("sendApprovalEmail()", () => {
     vi.mocked(prisma.appConfig.findMany).mockResolvedValue(makeSmtpRows());
     mockSendMail(true);
 
-    await sendApprovalEmail(APPROVAL_OPTS);
+    await sendAccountApprovedEmail(APPROVED_OPTS);
 
     const { data } = vi.mocked(prisma.emailReceipt.create).mock.calls[0][0];
     expect(data.emailSent).toBe(true);
