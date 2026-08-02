@@ -1,13 +1,12 @@
 #!/usr/bin/env bash
 # =============================================================================
-# Student Account Tracker — WSL Production Upgrade
-# Syncs code, rebuilds, and restarts PM2. Safe to run repeatedly.
-# Usage (from PowerShell): wsl bash "/mnt/c/Scripts/student account/scripts/linux/upgrade-student-account.sh"
+# Student Account Tracker — Linux Production Upgrade
+# Pulls latest code, rebuilds, and restarts PM2. Safe to run repeatedly.
+# Usage: bash ~/student-account/scripts/linux/upgrade-student-account.sh
 # =============================================================================
 set -euo pipefail
 
 APP_DIR="$HOME/student-account"
-WIN_PROJECT="/mnt/c/Scripts/student account"
 
 BOLD='\033[1m'
 GREEN='\033[0;32m'
@@ -21,25 +20,24 @@ echo -e "${BOLD}=====================================================${RESET}"
 echo -e "${BOLD}  Student Account Tracker — Deploying Update${RESET}"
 echo -e "${BOLD}=====================================================${RESET}"
 
-# ─── 1. Sync files ───────────────────────────────────────────────────────────
-step "1/4" "Syncing files from Windows..."
+# ─── 1. Pull latest code ─────────────────────────────────────────────────────
+step "1/4" "Pulling latest code from git..."
 
-rsync -a --delete \
-  --exclude='node_modules/' \
-  --exclude='.next/' \
-  --exclude='.git/' \
-  --exclude='.env' \
-  --exclude='.env.*' \
-  --no-perms \
-  "$WIN_PROJECT/" "$APP_DIR/"
-ok "Files synced"
+cd "$APP_DIR"
+if [ ! -d .git ]; then
+  echo "Error: $APP_DIR is not a git repository."
+  exit 1
+fi
+
+git fetch --all --prune
+CURRENT_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
+git pull --ff-only origin "$CURRENT_BRANCH"
+ok "Latest code pulled"
 
 # ─── 2. Install / update packages ────────────────────────────────────────────
 step "2/4" "Installing packages and generating Prisma client..."
 
 export NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
-cd "$APP_DIR"
-
 npm install
 ok "npm packages up to date"
 

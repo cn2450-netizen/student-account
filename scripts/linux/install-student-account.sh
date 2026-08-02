@@ -1,18 +1,17 @@
 #!/usr/bin/env bash
 # =============================================================================
-# Student Account Tracker — WSL Production Install
-# Run once to set up the production environment in WSL.
-# Usage (from PowerShell): wsl bash "/mnt/c/Scripts/student account/scripts/linux/install-student-account.sh"
+# Student Account Tracker — Linux Production Install
+# Run once to set up the production environment on a Linux server.
+# Usage: bash /path/to/student-account/scripts/linux/install-student-account.sh
 # =============================================================================
 set -euo pipefail
 
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 APP_DIR="$HOME/student-account"
-WIN_PROJECT="/mnt/c/Scripts/student account"
 DB_NAME="student_account"
 DB_USER="postgres"
 DB_PASS="postgres"
 APP_PORT="3000"
-WIN_CERTS_DIR="/mnt/c/Users/$(whoami)/AppData/Local/Temp/wsl-certs"
 
 BOLD='\033[1m'
 GREEN='\033[0;32m'
@@ -28,21 +27,8 @@ echo -e "${BOLD}======================================================${RESET}"
 echo -e "${BOLD}  Student Account Tracker — Production Install${RESET}"
 echo -e "${BOLD}======================================================${RESET}"
 
-# ─── Step 1: Import Windows CA certificates ──────────────────────────────────
-step "1/8" "Importing Windows CA certificates..."
-
-if [ -d "$WIN_CERTS_DIR" ]; then
-  sudo mkdir -p /usr/local/share/ca-certificates/windows-trust
-  sudo cp "$WIN_CERTS_DIR"/*.crt /usr/local/share/ca-certificates/windows-trust/ 2>/dev/null || true
-  CERT_COUNT=$(ls /usr/local/share/ca-certificates/windows-trust/*.crt 2>/dev/null | wc -l)
-  sudo update-ca-certificates --fresh 2>&1 | grep -E "added|updated|removed" || true
-  ok "Imported $CERT_COUNT Windows CA certificates"
-else
-  warn "Windows cert folder not found at $WIN_CERTS_DIR — skipping"
-fi
-
-# ─── Step 2: Install Node.js ─────────────────────────────────────────────────
-step "2/8" "Installing Node.js 22..."
+# ─── Step 1: Install Node.js ─────────────────────────────────────────────────
+step "1/7" "Installing Node.js 22..."
 
 if command -v node &>/dev/null && node -e "process.exit(Number(process.version.slice(1).split('.')[0]) >= 20 ? 0 : 1)" 2>/dev/null; then
   ok "Node.js already installed: $(node --version)"
@@ -81,8 +67,8 @@ sleep 2
 sudo -u postgres psql -c "ALTER USER $DB_USER WITH PASSWORD '$DB_PASS';" 2>/dev/null && ok "postgres user password set"
 sudo -u postgres createdb "$DB_NAME" 2>/dev/null && ok "Database '$DB_NAME' created" || warn "Database already exists (skipping)"
 
-# ─── Step 5: Sync project files ──────────────────────────────────────────────
-step "5/8" "Syncing project files..."
+# ─── Step 4: Sync project files ──────────────────────────────────────────────
+step "4/7" "Syncing project files from repo..."
 
 if ! command -v rsync &>/dev/null; then
   sudo apt-get install -y rsync -qq
@@ -96,11 +82,11 @@ rsync -a --delete \
   --exclude='.env' \
   --exclude='.env.*' \
   --no-perms \
-  "$WIN_PROJECT/" "$APP_DIR/"
+  "$REPO_ROOT/" "$APP_DIR/"
 ok "Files synced"
 
-# ─── Step 6: Configure environment ───────────────────────────────────────────
-step "6/8" "Configuring environment..."
+# ─── Step 5: Configure environment ───────────────────────────────────────────
+step "5/7" "Configuring environment..."
 
 if [ ! -f "$APP_DIR/.env" ]; then
   SECRET=$(tr -dc 'A-Za-z0-9!@#%^&*' < /dev/urandom 2>/dev/null | head -c 48 || openssl rand -hex 24)
@@ -167,7 +153,6 @@ echo ""
 echo -e "  URL:    ${CYAN}http://localhost:${APP_PORT}${RESET}"
 echo -e "  Admin:  ${CYAN}admin${RESET} / ${CYAN}admin${RESET}  (must change password on first login)"
 echo ""
-echo -e "  To deploy updates from Windows, run:"
-echo -e "  ${CYAN}wsl bash \"/mnt/c/Scripts/student account/scripts/linux/upgrade-student-account.sh\"${RESET}"
-echo -e "  Or from VS Code terminal:  ${CYAN}npm run deploy:wsl${RESET}"
+echo -e "  To deploy updates from this server, run:"
+echo -e "  ${CYAN}bash $APP_DIR/scripts/linux/upgrade-student-account.sh${RESET}"
 echo ""
