@@ -4,6 +4,7 @@ import { requireAuth } from "@/lib/secure-page";
 import { can } from "@/lib/rbac";
 import { prisma } from "@/lib/prisma";
 import { purgeReceiptsOlderThan5Years } from "@/lib/email";
+import { ResendReceiptButton } from "@/components/resend-receipt-button";
 
 const CURRENT_YEAR = new Date().getFullYear();
 const YEARS = Array.from({ length: 6 }, (_, i) => CURRENT_YEAR - i);
@@ -175,12 +176,15 @@ export default async function ReceiptsPage({
                     )}
                   </td>
                   <td className="px-4 py-3 text-right">
-                    <Link
-                      href={`/admin/receipts/${r.id}`}
-                      className="text-xs text-cyan-400 hover:text-cyan-300"
-                    >
-                      View / Print
-                    </Link>
+                    <div className="flex items-center justify-end gap-3">
+                      {!r.emailSent && <ResendReceiptButton receiptId={r.id} />}
+                      <Link
+                        href={`/admin/receipts/${r.id}`}
+                        className="text-xs text-cyan-400 hover:text-cyan-300"
+                      >
+                        View / Print
+                      </Link>
+                    </div>
                   </td>
                 </tr>
               ))}

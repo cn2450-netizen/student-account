@@ -93,7 +93,7 @@ export default async function ReceiptDetailPage({ params }: { params: Promise<{ 
           <div>
             <dt className="text-xs uppercase tracking-wide text-slate-500">Email Delivered</dt>
             <dd className={`mt-0.5 font-medium ${receipt.emailSent ? "text-emerald-400" : "text-slate-500"}`}>
-              {receipt.emailSent ? "Yes" : "No (SMTP not configured at time of send)"}
+              {receipt.emailSent ? "Yes" : "No — send failed"}
             </dd>
           </div>
           <div>

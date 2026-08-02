@@ -107,7 +107,8 @@ async function trySend(
     });
     await transporter.sendMail({ from: cfg.from, to, subject, html });
     return true;
-  } catch {
+  } catch (err) {
+    console.error(`[email] send to ${to} failed:`, err);
     return false;
   }
 }
@@ -301,6 +302,35 @@ export async function sendWithdrawReceipt(opts: {
   } catch { /* receipt logging is best-effort */ }
 
   return emailSent;
+}
+
+export async function resendReceiptEmail(receiptId: string): Promise<{ success: boolean; error?: string }> {
+  const receipt = await prisma.emailReceipt.findUnique({ where: { id: receiptId } });
+  if (!receipt) return { success: false, error: "Receipt not found" };
+
+  const cfg = await getEmailConfig();
+  if (!cfg.host || !cfg.from) return { success: false, error: "SMTP is not configured" };
+
+  try {
+    const transporter = nodemailer.createTransport({
+      host: cfg.host,
+      port: cfg.port,
+      secure: cfg.secure,
+      auth: cfg.user ? { user: cfg.user, pass: cfg.pass } : undefined,
+    });
+    await transporter.sendMail({
+      from: cfg.from,
+      to: receipt.toEmail,
+      subject: receipt.subject,
+      html: receipt.htmlBody,
+    });
+  } catch (err) {
+    console.error(`[email] resend to ${receipt.toEmail} failed:`, err);
+    return { success: false, error: "Send failed — check SMTP settings and try again" };
+  }
+
+  await prisma.emailReceipt.update({ where: { id: receiptId }, data: { emailSent: true } });
+  return { success: true };
 }
 
 export async function purgeReceiptsOlderThan5Years(): Promise<number> {

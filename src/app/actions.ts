@@ -7,7 +7,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getCurrentSession } from "@/lib/auth";
 import { can } from "@/lib/rbac";
-import { sendDepositReceipt, sendApprovalEmail, sendWithdrawReceipt, sendFundRequestDecisionEmail } from "@/lib/email";
+import { sendDepositReceipt, sendApprovalEmail, sendWithdrawReceipt, sendFundRequestDecisionEmail, resendReceiptEmail as resendReceiptEmailInternal } from "@/lib/email";
 
 // ─── Change password on first login ─────────────────────────────────────────
 
@@ -671,6 +671,23 @@ export async function approveFundRequest(
   } catch { /* email failure must not fail the approval */ }
 
   revalidatePath("/admin/fund-requests");
+  return { success: true };
+}
+
+// ─── Resend a receipt email ──────────────────────────────────────────────────
+
+export async function resendReceiptEmail(
+  receiptId: string,
+): Promise<{ error?: string; success?: boolean }> {
+  const session = await getCurrentSession();
+  if (!session?.user || (!can(session.user.role, "fundRequests") && !can(session.user.role, "allFunds"))) {
+    return { error: "Unauthorized" };
+  }
+
+  const result = await resendReceiptEmailInternal(receiptId);
+  if (!result.success) return { error: result.error ?? "Failed to resend email" };
+
+  revalidatePath("/admin/receipts");
   return { success: true };
 }
 
