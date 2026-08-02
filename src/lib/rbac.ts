@@ -9,11 +9,12 @@ export type Permission =
   | "ownStudents"         // manage own students (parent)
   | "ownFunds"            // view own fundraising & expenses (parent)
   | "submitRequests"      // submit fund requests (parent)
-  | "unlockAccounts";     // unlock permanently locked accounts (president + admin)
+  | "unlockAccounts"     // unlock permanently locked accounts (president + admin)
+  | "manageStaffAccounts"; // change staff (non-parent) account email addresses (president + admin)
 
 const ROLE_PERMISSIONS: Record<string, Permission[]> = {
-  ADMIN:                ["admin", "settings", "approvals", "allStudents", "allFunds", "fundRequests", "manageFundraising", "ownStudents", "ownFunds", "unlockAccounts"],
-  PRESIDENT:            ["settings", "approvals", "allStudents", "allFunds", "fundRequests", "unlockAccounts"],
+  ADMIN:                ["admin", "settings", "approvals", "allStudents", "allFunds", "fundRequests", "manageFundraising", "ownStudents", "ownFunds", "unlockAccounts", "manageStaffAccounts"],
+  PRESIDENT:            ["settings", "approvals", "allStudents", "allFunds", "fundRequests", "unlockAccounts", "manageStaffAccounts"],
   TREASURER:            ["approvals", "allStudents", "allFunds", "fundRequests", "manageFundraising"],
   FUNDRAISING_MANAGER:  ["allStudents", "manageFundraising"],
   BOARD_MEMBER:         ["allStudents"],

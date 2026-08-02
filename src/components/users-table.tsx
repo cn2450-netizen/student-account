@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { resetUserPassword, deleteUser } from "@/app/actions";
+import { resetUserPassword, deleteUser, updateStaffEmail } from "@/app/actions";
 
 type User = {
   id: string;
@@ -15,6 +15,29 @@ export function UsersTable({ users, currentUserId }: { users: User[]; currentUse
   const [isPending, startTransition] = useTransition();
   const [resetStatus, setResetStatus] = useState<Record<string, "sent" | "failed">>({});
   const [error, setError] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editEmail, setEditEmail] = useState("");
+  const [emailError, setEmailError] = useState<string | null>(null);
+
+  const startEditing = (user: User) => {
+    setEmailError(null);
+    setEditingId(user.id);
+    setEditEmail(user.username);
+  };
+
+  const handleSaveEmail = (userId: string) => {
+    setEmailError(null);
+    const fd = new FormData();
+    fd.set("email", editEmail);
+    startTransition(async () => {
+      const result = await updateStaffEmail(userId, fd);
+      if (result.error) {
+        setEmailError(result.error);
+      } else {
+        setEditingId(null);
+      }
+    });
+  };
 
   const handleReset = (userId: string) => {
     setError(null);
@@ -57,7 +80,48 @@ export function UsersTable({ users, currentUserId }: { users: User[]; currentUse
           <tbody className="divide-y divide-slate-800">
             {users.map((user) => (
               <tr key={user.id} className="bg-slate-900/40 hover:bg-slate-800/50">
-                <td className="px-4 py-3 text-slate-200">{user.username}</td>
+                <td className="px-4 py-3 text-slate-200">
+                  {editingId === user.id ? (
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="email"
+                          value={editEmail}
+                          onChange={(e) => setEditEmail(e.target.value)}
+                          autoFocus
+                          className="w-full max-w-56 rounded-md border border-slate-600 bg-slate-950 px-2 py-1 text-sm text-slate-100 outline-none focus:border-cyan-500/70"
+                        />
+                        <button
+                          onClick={() => handleSaveEmail(user.id)}
+                          disabled={isPending}
+                          className="rounded-md bg-cyan-600 px-2 py-1 text-xs font-medium text-white hover:bg-cyan-500 disabled:opacity-50"
+                        >
+                          Save
+                        </button>
+                        <button
+                          onClick={() => setEditingId(null)}
+                          disabled={isPending}
+                          className="rounded-md px-2 py-1 text-xs text-slate-400 hover:text-slate-200"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                      {emailError && <p className="text-xs text-rose-400">{emailError}</p>}
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <span>{user.username}</span>
+                      {user.role !== "PARENT" && (
+                        <button
+                          onClick={() => startEditing(user)}
+                          className="text-xs text-cyan-400 hover:text-cyan-300"
+                        >
+                          Edit
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </td>
                 <td className="px-4 py-3">
                   <span
                     className={`rounded px-2 py-0.5 text-xs font-medium ${

@@ -49,6 +49,7 @@ import {
   resetUserPassword,
   createStaffUser,
   unlockAccount,
+  updateStaffEmail,
 } from "@/app/actions";
 
 // ── Typed references to the mocked prisma sub-objects ────────────────────────
@@ -59,6 +60,7 @@ const mp = vi.mocked(prisma);
 // ── Session fixtures ──────────────────────────────────────────────────────────
 
 const adminSession    = { user: { id: "u-admin",     name: "admin@school.org",     role: "ADMIN"     } };
+const presidentSession = { user: { id: "u-president", name: "president@school.org", role: "PRESIDENT" } };
 const treasurerSession = { user: { id: "u-treasurer", name: "treasurer@school.org", role: "TREASURER" } };
 const parentSession   = { user: { id: "u-parent",    name: "parent@school.org",    role: "PARENT"    } };
 
@@ -982,5 +984,84 @@ describe("unlockAccount()", () => {
     const result = await unlockAccount("user-1");
 
     expect(result).toEqual({ success: true, emailSent: false });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// updateStaffEmail()
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("updateStaffEmail()", () => {
+  // findUnique is called twice with different `where` shapes (id lookup, then
+  // username-collision check) — branch on the shape instead of chaining
+  // mockResolvedValueOnce, since not every test consumes both calls.
+  function mockFindUnique(target: unknown, collision: unknown = null) {
+    mp.user.findUnique.mockImplementation(async ({ where }: { where: { id?: string; username?: string } }) => {
+      if (where.id !== undefined) return target as never;
+      return collision as never;
+    });
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockFindUnique({ id: "staff-1", role: "TREASURER" });
+    mp.user.update.mockResolvedValue({} as never);
+  });
+
+  function formData(email: string) {
+    const fd = new FormData();
+    fd.set("email", email);
+    return fd;
+  }
+
+  it("returns Unauthorized for a role without manageStaffAccounts permission", async () => {
+    vi.mocked(getCurrentSession).mockResolvedValue(treasurerSession as never);
+    expect(await updateStaffEmail("staff-1", formData("new@school.org"))).toEqual({ error: "Unauthorized" });
+  });
+
+  it("allows PRESIDENT (not just ADMIN)", async () => {
+    vi.mocked(getCurrentSession).mockResolvedValue(presidentSession as never);
+    const result = await updateStaffEmail("staff-1", formData("new@school.org"));
+    expect(result).toEqual({ success: true });
+  });
+
+  it("rejects a non-email value", async () => {
+    vi.mocked(getCurrentSession).mockResolvedValue(adminSession as never);
+    const result = await updateStaffEmail("staff-1", formData("not-an-email"));
+    expect(result.error).toMatch(/valid email/i);
+    expect(mp.user.update).not.toHaveBeenCalled();
+  });
+
+  it("returns an error when the target user doesn't exist", async () => {
+    vi.mocked(getCurrentSession).mockResolvedValue(adminSession as never);
+    mockFindUnique(null);
+    const result = await updateStaffEmail("missing", formData("new@school.org"));
+    expect(result).toEqual({ error: "User not found" });
+  });
+
+  it("refuses to rename a PARENT account", async () => {
+    vi.mocked(getCurrentSession).mockResolvedValue(adminSession as never);
+    mockFindUnique({ id: "parent-1", role: "PARENT" });
+    const result = await updateStaffEmail("parent-1", formData("new@school.org"));
+    expect(result.error).toMatch(/staff accounts/i);
+  });
+
+  it("rejects a duplicate email already used by another account", async () => {
+    vi.mocked(getCurrentSession).mockResolvedValue(adminSession as never);
+    mockFindUnique({ id: "staff-1", role: "TREASURER" }, { id: "other-user" });
+    const result = await updateStaffEmail("staff-1", formData("taken@school.org"));
+    expect(result.error).toMatch(/already exists/i);
+    expect(mp.user.update).not.toHaveBeenCalled();
+  });
+
+  it("normalizes casing/whitespace and updates the username", async () => {
+    vi.mocked(getCurrentSession).mockResolvedValue(adminSession as never);
+
+    await updateStaffEmail("staff-1", formData("  New@School.org  "));
+
+    expect(mp.user.update).toHaveBeenCalledWith({
+      where: { id: "staff-1" },
+      data: { username: "new@school.org" },
+    });
   });
 });

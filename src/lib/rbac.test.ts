@@ -7,13 +7,13 @@ describe("can()", () => {
     it.each([
       "admin", "settings", "approvals", "allStudents", "allFunds",
       "fundRequests", "manageFundraising", "ownStudents", "ownFunds",
-      "unlockAccounts",
+      "unlockAccounts", "manageStaffAccounts",
     ] as const)("has %s", (p) => expect(can("ADMIN", p)).toBe(true));
   });
 
   // ── PRESIDENT ────────────────────────────────────────────────────────────
   describe("PRESIDENT", () => {
-    it.each(["settings", "approvals", "allStudents", "allFunds", "fundRequests", "unlockAccounts"] as const)(
+    it.each(["settings", "approvals", "allStudents", "allFunds", "fundRequests", "unlockAccounts", "manageStaffAccounts"] as const)(
       "has %s", (p) => expect(can("PRESIDENT", p)).toBe(true)
     );
     it.each(["admin", "manageFundraising", "ownStudents", "ownFunds", "submitRequests"] as const)(
@@ -26,7 +26,7 @@ describe("can()", () => {
     it.each(["approvals", "allStudents", "allFunds", "fundRequests", "manageFundraising"] as const)(
       "has %s", (p) => expect(can("TREASURER", p)).toBe(true)
     );
-    it.each(["admin", "settings", "unlockAccounts", "ownStudents", "ownFunds", "submitRequests"] as const)(
+    it.each(["admin", "settings", "unlockAccounts", "manageStaffAccounts", "ownStudents", "ownFunds", "submitRequests"] as const)(
       "does not have %s", (p) => expect(can("TREASURER", p)).toBe(false)
     );
   });
@@ -38,7 +38,7 @@ describe("can()", () => {
     );
     it.each([
       "admin", "settings", "approvals", "allFunds", "fundRequests",
-      "unlockAccounts", "ownStudents", "ownFunds", "submitRequests",
+      "unlockAccounts", "manageStaffAccounts", "ownStudents", "ownFunds", "submitRequests",
     ] as const)(
       "does not have %s", (p) => expect(can("FUNDRAISING_MANAGER", p)).toBe(false)
     );
@@ -49,7 +49,7 @@ describe("can()", () => {
     it("has allStudents", () => expect(can("BOARD_MEMBER", "allStudents")).toBe(true));
     it.each([
       "admin", "settings", "approvals", "allFunds", "fundRequests",
-      "manageFundraising", "unlockAccounts", "ownStudents", "ownFunds", "submitRequests",
+      "manageFundraising", "unlockAccounts", "manageStaffAccounts", "ownStudents", "ownFunds", "submitRequests",
     ] as const)(
       "does not have %s", (p) => expect(can("BOARD_MEMBER", p)).toBe(false)
     );
@@ -62,7 +62,7 @@ describe("can()", () => {
     );
     it.each([
       "admin", "settings", "approvals", "allStudents", "allFunds",
-      "fundRequests", "manageFundraising", "unlockAccounts",
+      "fundRequests", "manageFundraising", "unlockAccounts", "manageStaffAccounts",
     ] as const)(
       "does not have %s", (p) => expect(can("PARENT", p)).toBe(false)
     );

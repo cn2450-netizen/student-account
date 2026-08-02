@@ -54,7 +54,7 @@ const RegisterSchema = z.object({
   firstName: z.string().min(1, "First name is required"),
   lastName: z.string().min(1, "Last name is required"),
   phone: z.string().min(7, "Phone number is required"),
-  email: z.string().email("Valid email is required"),
+  email: z.string().trim().email("Valid email is required"),
 });
 
 export async function registerParentAccount(
@@ -641,7 +641,7 @@ export async function deleteUser(userId: string): Promise<{ error?: string; succ
 // ─── Admin: create a staff user (ADMIN or TREASURER) ───────────────────────
 
 const CreateStaffUserSchema = z.object({
-  username: z.string().email("A valid email address is required"),
+  username: z.string().trim().email("A valid email address is required"),
   role: z.enum(["ADMIN", "PRESIDENT", "TREASURER", "FUNDRAISING_MANAGER", "BOARD_MEMBER"]),
 });
 
@@ -686,6 +686,37 @@ export async function createStaffUser(
   } catch { /* email failure must not fail the account creation */ }
 
   return { success: true, emailSent };
+}
+
+// ─── President/Admin: change a staff account's email address ────────────────
+
+const UpdateStaffEmailSchema = z.object({
+  email: z.string().trim().email("A valid email address is required"),
+});
+
+export async function updateStaffEmail(
+  userId: string,
+  formData: FormData,
+): Promise<{ error?: string; success?: boolean }> {
+  const session = await getCurrentSession();
+  if (!session?.user || !can(session.user.role, "manageStaffAccounts")) return { error: "Unauthorized" };
+
+  const parsed = UpdateStaffEmailSchema.safeParse({ email: formData.get("email") });
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
+
+  const newUsername = parsed.data.email.toLowerCase().trim();
+
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true, role: true } });
+  if (!user) return { error: "User not found" };
+  if (user.role === "PARENT") return { error: "This action is only for staff accounts, not parent accounts" };
+
+  const exists = await prisma.user.findUnique({ where: { username: newUsername } });
+  if (exists && exists.id !== userId) return { error: "A user with that email already exists" };
+
+  await prisma.user.update({ where: { id: userId }, data: { username: newUsername } });
+
+  revalidatePath("/settings/users");
+  return { success: true };
 }
 
 // ─── Parent: submit a fund request ───────────────────────────────────────────
