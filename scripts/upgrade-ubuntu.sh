@@ -2,7 +2,7 @@
 # =============================================================================
 #  Moneyfinder — Interactive Upgrade Script
 #  Pulls the latest commit from GitHub, rebuilds, and restarts the service.
-#  Requires a git-based installation (install-ubuntu.sh run with GITHUB_REPO set).
+#  Requires a git-based installation (the only kind install-ubuntu.sh sets up).
 #  Does NOT touch the database schema destructively or modify .env.
 #
 #  Usage (run as root or a user with sudo):
@@ -43,7 +43,7 @@ section "Moneyfinder — Upgrade"
 
 [[ -d "${APP_DIR}" ]]      || die "Install directory '${APP_DIR}' not found. Run install-ubuntu.sh first."
 [[ -f "${APP_DIR}/.env" ]] || die ".env not found in '${APP_DIR}'. Run install-ubuntu.sh first."
-[[ -d "${APP_DIR}/.git" ]] || die "'${APP_DIR}' is not a git repository. Use update-ubuntu.sh for rsync-based upgrades."
+[[ -d "${APP_DIR}/.git" ]] || die "'${APP_DIR}' is not a git repository. Re-run install-ubuntu.sh to set up a git-based install."
 
 command -v git >/dev/null 2>&1 || die "git not found."
 command -v npm >/dev/null 2>&1 || npm_bin="/usr/bin/npm"

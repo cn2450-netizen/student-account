@@ -42,9 +42,6 @@ run_as_app_user() {
   su "${APP_USER}" -s /bin/bash -c "export PATH=/usr/local/bin:/usr/bin:/bin:${PATH}; $*"
 }
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
-
 # ── Interactive config collection ─────────────────────────────────────────────
 ask() {
   local var="$1" prompt="$2" default="${3:-}"
@@ -75,7 +72,7 @@ ask_secret() {
 section "Moneyfinder — Ubuntu Installer"
 
 printf "  This script will install the following components:\n"
-printf "    • System packages (build-essential, curl, git, rsync, openssl, postgresql, nginx)\n"
+printf "    • System packages (build-essential, curl, git, openssl, postgresql, nginx)\n"
 printf "    • Node.js 22 (via NodeSource)\n"
 printf "    • PostgreSQL (service + app database)\n"
 printf "    • nginx (reverse proxy, HTTP → HTTPS redirect, self-signed cert)\n"
@@ -89,16 +86,9 @@ section "Configuration"
 DEFAULT_USER="${SUDO_USER:-${USER}}"
 [[ "${DEFAULT_USER}" == "root" ]] && DEFAULT_USER="usfsadmin"
 
-# Default: app files live alongside this script
-APP_SOURCE="${APP_SOURCE:-${REPO_ROOT}}"
-# GITHUB_REPO can be set to clone directly instead of rsync from a local source.
-# When set, APP_SOURCE is not required and auto-updates will be enabled automatically.
+# Clones from GitHub; override to point at a fork or different branch.
 GITHUB_REPO="${GITHUB_REPO:-cn2450-netizen/student-account}"
 UPDATE_BRANCH="${UPDATE_BRANCH:-master}"
-
-if [[ -z "${GITHUB_REPO:-}" ]]; then
-  [[ -f "${APP_SOURCE}/package.json" ]] || die "package.json not found in '${APP_SOURCE}'. Run from a full repo checkout (script expects to live in <repo>/scripts/) or set APP_SOURCE=/path/to/app."
-fi
 
 APP_USER="${APP_USER:-}"
 ask APP_USER "App service account username" "${DEFAULT_USER}"
@@ -129,11 +119,7 @@ UPDATE_INTERVAL_MIN="${UPDATE_INTERVAL_MIN:-15}"
 [[ "${UPDATE_INTERVAL_MIN}" -lt 5 ]] && UPDATE_INTERVAL_MIN=5
 
 printf "\n  ${GREEN}Configuration summary:${RESET}\n"
-if [[ -n "${GITHUB_REPO:-}" ]]; then
-  printf "    GitHub repo : %s (%s)\n" "${GITHUB_REPO}" "${UPDATE_BRANCH}"
-else
-  printf "    Source dir  : %s\n" "${APP_SOURCE}"
-fi
+printf "    GitHub repo : %s (%s)\n" "${GITHUB_REPO}" "${UPDATE_BRANCH}"
 printf "    App user    : %s\n" "${APP_USER}"
 printf "    Install dir : %s\n" "${APP_DIR}"
 printf "    Host        : %s\n" "${APP_HOST}"
@@ -156,7 +142,7 @@ as_root apt-get update -qq
 
 info "Installing required packages"
 as_root apt-get install -y \
-  curl git build-essential rsync \
+  curl git build-essential \
   openssl ca-certificates gnupg \
   postgresql postgresql-contrib \
   nginx
@@ -263,30 +249,19 @@ else
   ok "User '${APP_USER}' created"
 fi
 
-if [[ -n "${GITHUB_REPO:-}" ]]; then
-  info "Cloning https://github.com/${GITHUB_REPO}.git → ${APP_DIR}"
-  # Remove stale directory so git clone can write cleanly (preserves .env if it exists elsewhere)
-  if [[ -d "${APP_DIR}/.git" ]]; then
-    warn "${APP_DIR} is already a git repo — pulling latest instead of cloning"
-    git -C "${APP_DIR}" fetch origin "${UPDATE_BRANCH}"
-    git -C "${APP_DIR}" reset --hard "origin/${UPDATE_BRANCH}"
-  else
-    as_root rm -rf "${APP_DIR}"
-    # -k bypasses SSL for corporate TLS-inspection proxies
-    GIT_SSL_NO_VERIFY=true as_root git clone \
-      "https://github.com/${GITHUB_REPO}.git" "${APP_DIR}" \
-      || die "git clone failed. Check network access to GitHub."
-    as_root git -C "${APP_DIR}" checkout "${UPDATE_BRANCH}" 2>/dev/null || true
-  fi
+info "Cloning https://github.com/${GITHUB_REPO}.git → ${APP_DIR}"
+# Remove stale directory so git clone can write cleanly (preserves .env if it exists elsewhere)
+if [[ -d "${APP_DIR}/.git" ]]; then
+  warn "${APP_DIR} is already a git repo — pulling latest instead of cloning"
+  git -C "${APP_DIR}" fetch origin "${UPDATE_BRANCH}"
+  git -C "${APP_DIR}" reset --hard "origin/${UPDATE_BRANCH}"
 else
-  info "Copying app files from ${APP_SOURCE} to ${APP_DIR}"
-  as_root mkdir -p "${APP_DIR}"
-  as_root rsync -a --delete \
-    --exclude '.git' \
-    --exclude 'node_modules' \
-    --exclude '.next' \
-    --exclude '.env' \
-    "${APP_SOURCE}/" "${APP_DIR}/"
+  as_root rm -rf "${APP_DIR}"
+  # -k bypasses SSL for corporate TLS-inspection proxies
+  GIT_SSL_NO_VERIFY=true as_root git clone \
+    "https://github.com/${GITHUB_REPO}.git" "${APP_DIR}" \
+    || die "git clone failed. Check network access to GitHub."
+  as_root git -C "${APP_DIR}" checkout "${UPDATE_BRANCH}" 2>/dev/null || true
 fi
 as_root chown -R "${APP_USER}:${APP_USER}" "${APP_DIR}"
 ok "Files in place"
@@ -638,14 +613,10 @@ TMREOF
   ok "Auto-update timer enabled (next check: ~${UPDATE_INTERVAL_MIN} min after boot)"
 }
 
-if [[ -z "${GITHUB_REPO:-}" ]]; then
-  warn "GITHUB_REPO is not set — auto-update service will not be installed."
-  warn "To enable later: set GITHUB_REPO=${GITHUB_REPO:-owner/repo} and re-run this script."
-elif [[ ! -d "${APP_DIR}/.git" ]]; then
-  warn "APP_DIR is not a git repository — auto-update service will not be installed."
-  warn "Re-run with GITHUB_REPO set to enable auto-updates."
-else
+if [[ -d "${APP_DIR}/.git" ]]; then
   install_auto_updater
+else
+  warn "APP_DIR is not a git repository — auto-update service will not be installed."
 fi
 
 # ── Summary ───────────────────────────────────────────────────────────────────
@@ -656,7 +627,7 @@ printf "  %-20s %s\n" "App directory:"   "${APP_DIR}"
 printf "  %-20s %s\n" "Service:"         "moneyfinder  (systemctl)"
 printf "  %-20s %s\n" "HTTP (redirect):" "http://${APP_HOST}"
 printf "  %-20s %s\n" "HTTPS (app):"     "https://${APP_HOST}"
-if [[ -n "${GITHUB_REPO:-}" ]] && [[ -d "${APP_DIR}/.git" ]]; then
+if [[ -d "${APP_DIR}/.git" ]]; then
   printf "  %-20s every %s min (tracking %s/%s)\n" \
     "Auto-update:" "${UPDATE_INTERVAL_MIN}" "${GITHUB_REPO}" "${UPDATE_BRANCH}"
 fi
@@ -674,7 +645,7 @@ printf "    sudo systemctl status moneyfinder --no-pager\n"
 printf "    sudo systemctl status nginx --no-pager\n"
 printf "    sudo journalctl -u moneyfinder -f\n"
 printf "    curl -Ik https://127.0.0.1\n"
-if [[ -n "${GITHUB_REPO:-}" ]] && [[ -d "${APP_DIR}/.git" ]]; then
+if [[ -d "${APP_DIR}/.git" ]]; then
   printf "    sudo systemctl status moneyfinder-updater.timer --no-pager\n"
   printf "    sudo journalctl -u moneyfinder-updater -f\n"
   printf "    sudo /usr/local/bin/moneyfinder-auto-update   # trigger update now\n"
