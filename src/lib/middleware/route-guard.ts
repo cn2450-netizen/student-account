@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-const PUBLIC_PATHS = ["/login", "/register", "/change-password", "/terms"];
+const PUBLIC_PATHS = ["/login", "/register", "/change-password", "/terms", "/forgot-password", "/reset-password"];
 
 export function applyRouteGuard(req: NextRequest): NextResponse | null {
   const { pathname } = req.nextUrl;

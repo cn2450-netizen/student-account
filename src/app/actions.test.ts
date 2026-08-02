@@ -6,11 +6,12 @@ vi.mock("@/lib/prisma", () => ({
   prisma: {
     appConfig: { findUnique: vi.fn(), upsert: vi.fn() },
     accountRequest: { findUnique: vi.fn(), update: vi.fn() },
-    user: { create: vi.fn() },
+    user: { create: vi.fn(), findUnique: vi.fn(), update: vi.fn() },
     parentProfile: { findUnique: vi.fn(), create: vi.fn() },
     student: { findMany: vi.fn(), findUnique: vi.fn(), update: vi.fn() },
     fundraisingEntry: { create: vi.fn() },
     fundRequest: { findUnique: vi.fn(), update: vi.fn() },
+    passwordResetToken: { findFirst: vi.fn(), findUnique: vi.fn(), create: vi.fn(), update: vi.fn() },
     $transaction: vi.fn(),
   },
 }));
@@ -22,6 +23,7 @@ vi.mock("@/lib/email", () => ({
   sendApprovalEmail: vi.fn().mockResolvedValue(true),
   sendWithdrawReceipt: vi.fn().mockResolvedValue(true),
   sendFundRequestDecisionEmail: vi.fn().mockResolvedValue(true),
+  sendPasswordResetEmail: vi.fn().mockResolvedValue(true),
 }));
 
 vi.mock("bcryptjs", () => ({
@@ -35,8 +37,15 @@ vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 
 import { prisma } from "@/lib/prisma";
 import { getCurrentSession } from "@/lib/auth";
-import { sendDepositReceipt, sendApprovalEmail, sendFundRequestDecisionEmail } from "@/lib/email";
-import { advanceGrades, approveAccountRequest, addFundraisingEntry, denyFundRequest } from "@/app/actions";
+import { sendDepositReceipt, sendApprovalEmail, sendFundRequestDecisionEmail, sendPasswordResetEmail } from "@/lib/email";
+import {
+  advanceGrades,
+  approveAccountRequest,
+  addFundraisingEntry,
+  denyFundRequest,
+  requestPasswordReset,
+  resetPasswordWithToken,
+} from "@/app/actions";
 
 // ── Typed references to the mocked prisma sub-objects ────────────────────────
 // vi.mocked() gives TypeScript the mock type so .mockResolvedValue etc. work.
@@ -582,6 +591,164 @@ describe("denyFundRequest()", () => {
         status: "DENIED",
         reason: "Missing paperwork",
       }),
+    );
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// requestPasswordReset()
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("requestPasswordReset()", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mp.passwordResetToken.create.mockResolvedValue({} as never);
+  });
+
+  function formData(email: string) {
+    const fd = new FormData();
+    fd.set("email", email);
+    return fd;
+  }
+
+  it("returns success without creating a token when no user matches the email", async () => {
+    mp.user.findUnique.mockResolvedValue(null as never);
+
+    const result = await requestPasswordReset({}, formData("nobody@example.com"));
+
+    expect(result.success).toBe(true);
+    expect(mp.passwordResetToken.create).not.toHaveBeenCalled();
+    expect(sendPasswordResetEmail).not.toHaveBeenCalled();
+  });
+
+  it("normalizes email casing/whitespace, creates a token, and emails the reset link", async () => {
+    mp.user.findUnique.mockResolvedValue({ id: "user-1", username: "parent@example.com" } as never);
+    mp.passwordResetToken.findFirst.mockResolvedValue(null as never);
+
+    const result = await requestPasswordReset({}, formData("  Parent@Example.com  "));
+
+    expect(mp.user.findUnique).toHaveBeenCalledWith({ where: { username: "parent@example.com" } });
+    expect(mp.passwordResetToken.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ userId: "user-1" }) }),
+    );
+    expect(sendPasswordResetEmail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: "parent@example.com",
+        resetUrl: expect.stringContaining("/reset-password?token="),
+      }),
+    );
+    expect(result.success).toBe(true);
+  });
+
+  it("skips creating a new token when one was already requested recently", async () => {
+    mp.user.findUnique.mockResolvedValue({ id: "user-1", username: "parent@example.com" } as never);
+    mp.passwordResetToken.findFirst.mockResolvedValue({ id: "existing-token" } as never);
+
+    const result = await requestPasswordReset({}, formData("parent@example.com"));
+
+    expect(mp.passwordResetToken.create).not.toHaveBeenCalled();
+    expect(sendPasswordResetEmail).not.toHaveBeenCalled();
+    expect(result.success).toBe(true);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// resetPasswordWithToken()
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("resetPasswordWithToken()", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mp.$transaction.mockResolvedValue([{}, {}] as never);
+  });
+
+  function formData(fields: Record<string, string>) {
+    const fd = new FormData();
+    for (const [k, v] of Object.entries(fields)) fd.set(k, v);
+    return fd;
+  }
+
+  it("rejects mismatched passwords before ever looking up the token", async () => {
+    const result = await resetPasswordWithToken(
+      {},
+      formData({ token: "x", newPassword: "NewPass123", confirmPassword: "Different1" }),
+    );
+
+    expect(result.error).toMatch(/do not match/i);
+    expect(mp.passwordResetToken.findUnique).not.toHaveBeenCalled();
+  });
+
+  it("rejects when the token doesn't exist", async () => {
+    mp.passwordResetToken.findUnique.mockResolvedValue(null as never);
+
+    const result = await resetPasswordWithToken(
+      {},
+      formData({ token: "bad", newPassword: "NewPass123", confirmPassword: "NewPass123" }),
+    );
+
+    expect(result.error).toMatch(/invalid or has expired/i);
+  });
+
+  it("rejects an already-used token", async () => {
+    mp.passwordResetToken.findUnique.mockResolvedValue({
+      id: "t1",
+      userId: "user-1",
+      usedAt: new Date(),
+      expiresAt: new Date(Date.now() + 100_000),
+    } as never);
+
+    const result = await resetPasswordWithToken(
+      {},
+      formData({ token: "used", newPassword: "NewPass123", confirmPassword: "NewPass123" }),
+    );
+
+    expect(result.error).toMatch(/invalid or has expired/i);
+  });
+
+  it("rejects an expired token", async () => {
+    mp.passwordResetToken.findUnique.mockResolvedValue({
+      id: "t1",
+      userId: "user-1",
+      usedAt: null,
+      expiresAt: new Date(Date.now() - 1000),
+    } as never);
+
+    const result = await resetPasswordWithToken(
+      {},
+      formData({ token: "expired", newPassword: "NewPass123", confirmPassword: "NewPass123" }),
+    );
+
+    expect(result.error).toMatch(/invalid or has expired/i);
+  });
+
+  it("updates the password, clears lockout state, and marks the token used on success", async () => {
+    mp.passwordResetToken.findUnique.mockResolvedValue({
+      id: "t1",
+      userId: "user-1",
+      usedAt: null,
+      expiresAt: new Date(Date.now() + 100_000),
+    } as never);
+
+    const result = await resetPasswordWithToken(
+      {},
+      formData({ token: "good", newPassword: "NewPass123", confirmPassword: "NewPass123" }),
+    );
+
+    expect(result.success).toBe(true);
+    expect(mp.user.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "user-1" },
+        data: expect.objectContaining({
+          forcePasswordChange: false,
+          loginAttempts: 0,
+          loginWindowStart: null,
+          lockedUntil: null,
+          permanentLock: false,
+        }),
+      }),
+    );
+    expect(mp.passwordResetToken.update).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: "t1" }, data: expect.objectContaining({ usedAt: expect.any(Date) }) }),
     );
   });
 });

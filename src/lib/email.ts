@@ -209,6 +209,45 @@ export async function sendApprovalEmail(opts: {
   return emailSent;
 }
 
+const PASSWORD_RESET_SUBJECT = "Reset your WWT Student Account Tracker password";
+const PASSWORD_RESET_BODY = [
+  "<p>Hi {{username}},</p>",
+  "<p>We received a request to reset the password for your account. Click the link below to choose a new password:</p>",
+  '<p><a href="{{resetUrl}}">Reset your password</a></p>',
+  "<p>This link expires in 1 hour and can only be used once. If you didn't request this, you can safely ignore this email — your password won't be changed.</p>",
+].join("\n");
+
+export async function sendPasswordResetEmail(opts: {
+  to: string;
+  resetUrl: string;
+}): Promise<boolean> {
+  const cfg = await getEmailConfig();
+  const vars: Record<string, string> = { username: opts.to, resetUrl: opts.resetUrl };
+  const subject = render(PASSWORD_RESET_SUBJECT, vars);
+  const html = render(PASSWORD_RESET_BODY, vars);
+
+  const emailSent = await trySend(cfg, opts.to, subject, html);
+
+  try {
+    await prisma.emailReceipt.create({
+      data: {
+        type: "password_reset",
+        toEmail: opts.to,
+        toName: opts.to,
+        subject,
+        htmlBody: html,
+        studentId: null,
+        studentName: null,
+        amount: null,
+        description: null,
+        emailSent,
+      },
+    });
+  } catch { /* receipt logging is best-effort */ }
+
+  return emailSent;
+}
+
 export async function sendFundRequestDecisionEmail(opts: {
   to: string;
   parentName: string;

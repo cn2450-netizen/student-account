@@ -33,6 +33,20 @@ model User {
   createdAt           DateTime       @default(now())
   updatedAt           DateTime       @updatedAt
   profile             ParentProfile?
+  passwordResetTokens PasswordResetToken[]
+}
+
+// ─── Self-service password reset tokens ──────────────────────────────────────
+
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 // ─── Parent profile (linked 1-to-1 with a User after approval) ───────────────

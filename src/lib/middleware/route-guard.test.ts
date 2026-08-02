@@ -15,6 +15,9 @@ describe("applyRouteGuard()", () => {
       "/register/confirm",
       "/change-password",
       "/terms",
+      "/forgot-password",
+      "/reset-password",
+      "/reset-password/",
     ])("%s", (path) => {
       expect(applyRouteGuard(req(path))).not.toBeNull();
     });

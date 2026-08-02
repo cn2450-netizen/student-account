@@ -4,10 +4,12 @@ import { revalidatePath } from "next/cache";
 import { hash, compare } from "bcryptjs";
 import { z } from "zod";
 
+import { randomBytes, createHash } from "crypto";
+
 import { prisma } from "@/lib/prisma";
 import { getCurrentSession } from "@/lib/auth";
 import { can } from "@/lib/rbac";
-import { sendDepositReceipt, sendApprovalEmail, sendWithdrawReceipt, sendFundRequestDecisionEmail, resendReceiptEmail as resendReceiptEmailInternal } from "@/lib/email";
+import { sendDepositReceipt, sendApprovalEmail, sendWithdrawReceipt, sendFundRequestDecisionEmail, sendPasswordResetEmail, resendReceiptEmail as resendReceiptEmailInternal } from "@/lib/email";
 
 // ─── Change password on first login ─────────────────────────────────────────
 
@@ -116,6 +118,101 @@ export async function registerParentAccount(
       passwordHash: await hash(password, 12),
     },
   });
+
+  return { success: true };
+}
+
+// ─── Forgot password (public — no auth required) ────────────────────────────
+
+const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour
+const RESET_REQUEST_COOLDOWN_MS = 2 * 60 * 1000; // 2 minutes — avoid spamming the inbox on repeat submits
+
+export async function requestPasswordReset(
+  _prev: { success?: boolean },
+  formData: FormData,
+): Promise<{ success?: boolean }> {
+  const email = (formData.get("email") as string | null)?.toLowerCase().trim();
+
+  if (email) {
+    const user = await prisma.user.findUnique({ where: { username: email } });
+    if (user) {
+      const recent = await prisma.passwordResetToken.findFirst({
+        where: { userId: user.id, createdAt: { gt: new Date(Date.now() - RESET_REQUEST_COOLDOWN_MS) } },
+      });
+
+      if (!recent) {
+        const rawToken = randomBytes(32).toString("hex");
+        const tokenHash = createHash("sha256").update(rawToken).digest("hex");
+
+        await prisma.passwordResetToken.create({
+          data: { userId: user.id, tokenHash, expiresAt: new Date(Date.now() + RESET_TOKEN_TTL_MS) },
+        });
+
+        const baseUrl = process.env.NEXTAUTH_URL ?? "";
+        const resetUrl = `${baseUrl}/reset-password?token=${rawToken}`;
+
+        try {
+          await sendPasswordResetEmail({ to: user.username, resetUrl });
+        } catch { /* never reveal send failures to the requester */ }
+      }
+    }
+  }
+
+  // Same response whether or not the email exists — don't leak account existence.
+  return { success: true };
+}
+
+const ResetPasswordSchema = z
+  .object({
+    token: z.string().min(1),
+    newPassword: z.string().min(8, "Password must be at least 8 characters"),
+    confirmPassword: z.string(),
+  })
+  .refine((d) => d.newPassword === d.confirmPassword, {
+    message: "Passwords do not match",
+    path: ["confirmPassword"],
+  });
+
+export async function resetPasswordWithToken(
+  _prev: { error?: string; success?: boolean },
+  formData: FormData,
+): Promise<{ error?: string; success?: boolean }> {
+  const parsed = ResetPasswordSchema.safeParse({
+    token: formData.get("token"),
+    newPassword: formData.get("newPassword"),
+    confirmPassword: formData.get("confirmPassword"),
+  });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
+  }
+
+  const tokenHash = createHash("sha256").update(parsed.data.token).digest("hex");
+  const resetToken = await prisma.passwordResetToken.findUnique({ where: { tokenHash } });
+
+  if (!resetToken || resetToken.usedAt || resetToken.expiresAt < new Date()) {
+    return { error: "This reset link is invalid or has expired. Request a new one." };
+  }
+
+  const passwordHash = await hash(parsed.data.newPassword, 12);
+
+  await prisma.$transaction([
+    prisma.user.update({
+      where: { id: resetToken.userId },
+      data: {
+        passwordHash,
+        forcePasswordChange: false,
+        passwordChangedAt: new Date(),
+        loginAttempts: 0,
+        loginWindowStart: null,
+        lockedUntil: null,
+        permanentLock: false,
+      },
+    }),
+    prisma.passwordResetToken.update({
+      where: { id: resetToken.id },
+      data: { usedAt: new Date() },
+    }),
+  ]);
 
   return { success: true };
 }
@@ -504,7 +601,17 @@ export async function resetUserPassword(userId: string): Promise<{ error?: strin
   const tempPassword = Array.from({ length: 12 }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
 
   const passwordHash = await hash(tempPassword, 12);
-  await prisma.user.update({ where: { id: userId }, data: { passwordHash, forcePasswordChange: true } });
+  await prisma.user.update({
+    where: { id: userId },
+    data: {
+      passwordHash,
+      forcePasswordChange: true,
+      loginAttempts: 0,
+      loginWindowStart: null,
+      lockedUntil: null,
+      permanentLock: false,
+    },
+  });
 
   return { tempPassword };
 }
