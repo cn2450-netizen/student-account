@@ -11,8 +11,8 @@ export function RegisterForm() {
       <div className="rounded-2xl border border-emerald-600/40 bg-emerald-900/20 p-6 text-center space-y-2">
         <p className="text-lg font-semibold text-emerald-300">Request Submitted!</p>
         <p className="text-sm text-slate-300">
-          Your account request is pending administrator approval. You will be able to log in once
-          approved.
+          Your account request is pending administrator approval. Once approved, you&apos;ll
+          receive an email with a link to set your password and log in.
         </p>
       </div>
     );
@@ -60,29 +60,6 @@ export function RegisterForm() {
           name="email"
           type="email"
           required
-          className="w-full rounded-lg border border-slate-600 bg-slate-950 px-3 py-2 text-slate-100 outline-none ring-cyan-400/40 focus:ring"
-        />
-      </div>
-
-      <div>
-        <label className="mb-1 block text-sm text-slate-300">Password</label>
-        <input
-          name="password"
-          type="password"
-          required
-          minLength={8}
-          className="w-full rounded-lg border border-slate-600 bg-slate-950 px-3 py-2 text-slate-100 outline-none ring-cyan-400/40 focus:ring"
-        />
-        <p className="mt-1 text-xs text-slate-500">Minimum 8 characters</p>
-      </div>
-
-      <div>
-        <label className="mb-1 block text-sm text-slate-300">Confirm Password</label>
-        <input
-          name="confirmPassword"
-          type="password"
-          required
-          minLength={8}
           className="w-full rounded-lg border border-slate-600 bg-slate-950 px-3 py-2 text-slate-100 outline-none ring-cyan-400/40 focus:ring"
         />
       </div>

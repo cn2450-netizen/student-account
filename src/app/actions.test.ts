@@ -20,7 +20,7 @@ vi.mock("@/lib/auth", () => ({ getCurrentSession: vi.fn() }));
 
 vi.mock("@/lib/email", () => ({
   sendDepositReceipt: vi.fn().mockResolvedValue(true),
-  sendApprovalEmail: vi.fn().mockResolvedValue(true),
+  sendAccountApprovedEmail: vi.fn().mockResolvedValue(true),
   sendWithdrawReceipt: vi.fn().mockResolvedValue(true),
   sendFundRequestDecisionEmail: vi.fn().mockResolvedValue(true),
   sendPasswordResetEmail: vi.fn().mockResolvedValue(true),
@@ -37,7 +37,7 @@ vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 
 import { prisma } from "@/lib/prisma";
 import { getCurrentSession } from "@/lib/auth";
-import { sendDepositReceipt, sendApprovalEmail, sendFundRequestDecisionEmail, sendPasswordResetEmail } from "@/lib/email";
+import { sendDepositReceipt, sendAccountApprovedEmail, sendFundRequestDecisionEmail, sendPasswordResetEmail } from "@/lib/email";
 import {
   advanceGrades,
   approveAccountRequest,
@@ -297,7 +297,6 @@ describe("approveAccountRequest()", () => {
     lastName: "Doe",
     phone: "555-1234",
     status: "PENDING",
-    passwordHash: "existing-hash",
     assignedTo: null, reviewedAt: null, reviewedBy: null,
     createdAt: new Date(), updatedAt: new Date(),
   };
@@ -387,27 +386,14 @@ describe("approveAccountRequest()", () => {
     );
   });
 
-  it("does not force a password change when the request already has a passwordHash", async () => {
+  it("always forces a password change with an unusable random placeholder hash", async () => {
     vi.mocked(getCurrentSession).mockResolvedValue(adminSession as never);
-
-    await approveAccountRequest("req-1"); // PENDING_REQUEST.passwordHash = "existing-hash"
-
-    expect(mp.user.create).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({ passwordHash: "existing-hash", forcePasswordChange: false }),
-      }),
-    );
-  });
-
-  it("forces a password change when the request has no passwordHash", async () => {
-    vi.mocked(getCurrentSession).mockResolvedValue(adminSession as never);
-    mp.accountRequest.findUnique.mockResolvedValue({ ...PENDING_REQUEST, passwordHash: null } as never);
 
     await approveAccountRequest("req-1");
 
     expect(mp.user.create).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ forcePasswordChange: true }),
+        data: expect.objectContaining({ forcePasswordChange: true, passwordHash: expect.any(String) }),
       }),
     );
   });
@@ -423,18 +409,22 @@ describe("approveAccountRequest()", () => {
 
   it("returns emailSent=false when the email send fails", async () => {
     vi.mocked(getCurrentSession).mockResolvedValue(adminSession as never);
-    vi.mocked(sendApprovalEmail).mockResolvedValueOnce(false);
+    vi.mocked(sendAccountApprovedEmail).mockResolvedValueOnce(false);
     const result = await approveAccountRequest("req-1");
     expect(result).toMatchObject({ success: true, emailSent: false });
   });
 
-  it("sends an approval email with the parent's name and email", async () => {
+  it("sends a set-password email with a reset link to the parent", async () => {
     vi.mocked(getCurrentSession).mockResolvedValue(adminSession as never);
 
     await approveAccountRequest("req-1");
 
-    expect(sendApprovalEmail).toHaveBeenCalledWith(
-      expect.objectContaining({ to: "parent@example.com", parentName: "Jane Doe" }),
+    expect(sendAccountApprovedEmail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: "parent@example.com",
+        parentName: "Jane Doe",
+        resetUrl: expect.stringContaining("/reset-password?token="),
+      }),
     );
   });
 });

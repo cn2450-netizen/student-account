@@ -248,6 +248,46 @@ export async function sendPasswordResetEmail(opts: {
   return emailSent;
 }
 
+const ACCOUNT_APPROVED_SUBJECT = "Your account is approved — set your password";
+const ACCOUNT_APPROVED_BODY = [
+  "<p>Hi {{parentName}},</p>",
+  "<p>Your registration has been approved. Click the link below to set your password and finish setting up your account:</p>",
+  '<p><a href="{{resetUrl}}">Set your password</a></p>',
+  "<p>This link expires in 1 hour and can only be used once. If you have any questions, please contact your school organization.</p>",
+].join("\n");
+
+export async function sendAccountApprovedEmail(opts: {
+  to: string;
+  parentName: string;
+  resetUrl: string;
+}): Promise<boolean> {
+  const cfg = await getEmailConfig();
+  const vars: Record<string, string> = { parentName: opts.parentName, resetUrl: opts.resetUrl };
+  const subject = render(ACCOUNT_APPROVED_SUBJECT, vars);
+  const html = render(ACCOUNT_APPROVED_BODY, vars);
+
+  const emailSent = await trySend(cfg, opts.to, subject, html);
+
+  try {
+    await prisma.emailReceipt.create({
+      data: {
+        type: "approval",
+        toEmail: opts.to,
+        toName: opts.parentName,
+        subject,
+        htmlBody: html,
+        studentId: null,
+        studentName: null,
+        amount: null,
+        description: null,
+        emailSent,
+      },
+    });
+  } catch { /* receipt logging is best-effort */ }
+
+  return emailSent;
+}
+
 export async function sendFundRequestDecisionEmail(opts: {
   to: string;
   parentName: string;

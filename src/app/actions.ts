@@ -9,7 +9,7 @@ import { randomBytes, createHash } from "crypto";
 import { prisma } from "@/lib/prisma";
 import { getCurrentSession } from "@/lib/auth";
 import { can } from "@/lib/rbac";
-import { sendDepositReceipt, sendApprovalEmail, sendWithdrawReceipt, sendFundRequestDecisionEmail, sendPasswordResetEmail, resendReceiptEmail as resendReceiptEmailInternal } from "@/lib/email";
+import { sendDepositReceipt, sendAccountApprovedEmail, sendWithdrawReceipt, sendFundRequestDecisionEmail, sendPasswordResetEmail, resendReceiptEmail as resendReceiptEmailInternal } from "@/lib/email";
 
 // ─── Change password on first login ─────────────────────────────────────────
 
@@ -50,19 +50,12 @@ export async function changePasswordOnFirstLogin(
 
 // ─── Register parent account (public — no auth required) ────────────────────
 
-const RegisterSchema = z
-  .object({
-    firstName: z.string().min(1, "First name is required"),
-    lastName: z.string().min(1, "Last name is required"),
-    phone: z.string().min(7, "Phone number is required"),
-    email: z.string().email("Valid email is required"),
-    password: z.string().min(8, "Password must be at least 8 characters"),
-    confirmPassword: z.string(),
-  })
-  .refine((d) => d.password === d.confirmPassword, {
-    message: "Passwords do not match",
-    path: ["confirmPassword"],
-  });
+const RegisterSchema = z.object({
+  firstName: z.string().min(1, "First name is required"),
+  lastName: z.string().min(1, "Last name is required"),
+  phone: z.string().min(7, "Phone number is required"),
+  email: z.string().email("Valid email is required"),
+});
 
 export async function registerParentAccount(
   _prev: { error?: string; success?: boolean },
@@ -73,15 +66,13 @@ export async function registerParentAccount(
     lastName: formData.get("lastName"),
     phone: formData.get("phone"),
     email: formData.get("email"),
-    password: formData.get("password"),
-    confirmPassword: formData.get("confirmPassword"),
   });
 
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
   }
 
-  const { firstName, lastName, phone, email, password } = parsed.data;
+  const { firstName, lastName, phone, email } = parsed.data;
   const normalizedEmail = email.toLowerCase().trim();
 
   // Check for an existing request or live user account
@@ -110,13 +101,7 @@ export async function registerParentAccount(
   }
 
   await prisma.accountRequest.create({
-    data: {
-      firstName,
-      lastName,
-      phone,
-      email: normalizedEmail,
-      passwordHash: await hash(password, 12),
-    },
+    data: { firstName, lastName, phone, email: normalizedEmail },
   });
 
   return { success: true };
@@ -126,6 +111,20 @@ export async function registerParentAccount(
 
 const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour
 const RESET_REQUEST_COOLDOWN_MS = 2 * 60 * 1000; // 2 minutes — avoid spamming the inbox on repeat submits
+
+// Issues a single-use password-reset token for a user and returns the link to email them.
+// Shared by requestPasswordReset() (self-service) and approveAccountRequest() (admin approval).
+async function createPasswordResetLink(userId: string): Promise<string> {
+  const rawToken = randomBytes(32).toString("hex");
+  const tokenHash = createHash("sha256").update(rawToken).digest("hex");
+
+  await prisma.passwordResetToken.create({
+    data: { userId, tokenHash, expiresAt: new Date(Date.now() + RESET_TOKEN_TTL_MS) },
+  });
+
+  const baseUrl = process.env.NEXTAUTH_URL ?? "";
+  return `${baseUrl}/reset-password?token=${rawToken}`;
+}
 
 export async function requestPasswordReset(
   _prev: { success?: boolean },
@@ -141,16 +140,7 @@ export async function requestPasswordReset(
       });
 
       if (!recent) {
-        const rawToken = randomBytes(32).toString("hex");
-        const tokenHash = createHash("sha256").update(rawToken).digest("hex");
-
-        await prisma.passwordResetToken.create({
-          data: { userId: user.id, tokenHash, expiresAt: new Date(Date.now() + RESET_TOKEN_TTL_MS) },
-        });
-
-        const baseUrl = process.env.NEXTAUTH_URL ?? "";
-        const resetUrl = `${baseUrl}/reset-password?token=${rawToken}`;
-
+        const resetUrl = await createPasswordResetLink(user.id);
         try {
           await sendPasswordResetEmail({ to: user.username, resetUrl });
         } catch { /* never reveal send failures to the requester */ }
@@ -230,17 +220,17 @@ export async function approveAccountRequest(requestId: string) {
     return { error: "Request not found or already processed" };
   }
 
-  // Use the password the parent set at registration, or fall back to a temp password
-  const passwordHash = request.passwordHash ?? await hash(request.email, 12);
-  const forcePasswordChange = !request.passwordHash;
+  // No password is collected at signup anymore — set an unusable random
+  // placeholder; the parent sets their real password via the emailed link below.
+  const passwordHash = await hash(randomBytes(24).toString("hex"), 12);
 
-  await prisma.$transaction(async (tx) => {
+  const userId = await prisma.$transaction(async (tx) => {
     const user = await tx.user.create({
       data: {
         username: request.email,
         passwordHash,
         role: "PARENT",
-        forcePasswordChange,
+        forcePasswordChange: true,
       },
     });
 
@@ -261,17 +251,19 @@ export async function approveAccountRequest(requestId: string) {
         reviewedAt: new Date(),
       },
     });
+
+    return user.id;
   });
 
   revalidatePath("/admin/approvals");
 
-  const loginUrl = process.env.NEXTAUTH_URL ?? "";
   let emailSent = false;
   try {
-    emailSent = await sendApprovalEmail({
+    const resetUrl = await createPasswordResetLink(userId);
+    emailSent = await sendAccountApprovedEmail({
       to: request.email,
       parentName: `${request.firstName} ${request.lastName}`,
-      loginUrl,
+      resetUrl,
     });
   } catch { /* email failure must not fail the approval */ }
 

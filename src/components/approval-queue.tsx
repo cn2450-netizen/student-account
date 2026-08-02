@@ -149,8 +149,8 @@ export function ApprovalQueue({
       </table>
 
       <div className="border-t border-slate-700 px-4 py-3 text-xs text-slate-500">
-        When approved, the parent will receive access using their email as username and initial
-        password — they will be required to set a new password on first login.
+        When approved, the parent will receive an email with a link to set their password before
+        they can log in.
       </div>
     </div>
 
