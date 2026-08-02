@@ -112,7 +112,7 @@ import "./globals.css";
 import { NextAuthSessionProvider } from "@/components/session-provider";
 
 export const metadata: Metadata = {
-  title: "Student Account Tracker",
+  title: "WWT Student Account Tracker",
   description: "Secure student account tracking, requests, and audit operations",
 };
 
