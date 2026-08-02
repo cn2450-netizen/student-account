@@ -32,7 +32,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const ipRecord = await prisma.ipRateLimit.findUnique({ where: { ip } });
         const windowActive = !!ipRecord && ipRecord.resetAt > now;
 
-        if (windowActive && ipRecord!.count >= IP_MAX_ATTEMPTS) return null;
+        if (windowActive && ipRecord!.count >= IP_MAX_ATTEMPTS) {
+          console.warn(`[auth] rejected — IP rate limit exceeded: ip=${ip} count=${ipRecord!.count}`);
+          return null;
+        }
 
         if (windowActive) {
           await prisma.ipRateLimit.update({
@@ -48,17 +51,27 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         }
 
         const user = await prisma.user.findUnique({ where: { username } });
-        if (!user) return null;
+        if (!user) {
+          console.warn(`[auth] rejected — no user found for username=${username}`);
+          return null;
+        }
 
         // Permanent lockout — requires PRESIDENT/ADMIN to reactivate
-        if (user.permanentLock) return null;
+        if (user.permanentLock) {
+          console.warn(`[auth] rejected — account permanently locked: username=${username}`);
+          return null;
+        }
 
         // Temporary lockout window
-        if (user.lockedUntil && user.lockedUntil > new Date()) return null;
+        if (user.lockedUntil && user.lockedUntil > new Date()) {
+          console.warn(`[auth] rejected — account locked until ${user.lockedUntil.toISOString()}: username=${username}`);
+          return null;
+        }
 
         const ok = await compare(password, user.passwordHash);
 
         if (!ok) {
+          console.warn(`[auth] rejected — password mismatch: username=${username} attempts=${user.loginAttempts + 1}`);
           const now = new Date();
           const windowMs = 10 * 60 * 1000;
           const windowExpired =
