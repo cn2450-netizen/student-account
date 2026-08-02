@@ -7,7 +7,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getCurrentSession } from "@/lib/auth";
 import { can } from "@/lib/rbac";
-import { sendDepositReceipt, sendApprovalEmail, sendWithdrawReceipt } from "@/lib/email";
+import { sendDepositReceipt, sendApprovalEmail, sendWithdrawReceipt, sendFundRequestDecisionEmail } from "@/lib/email";
 
 // ─── Change password on first login ─────────────────────────────────────────
 
@@ -683,20 +683,41 @@ export async function denyFundRequest(
   const session = await getCurrentSession();
   if (!session?.user || !can(session.user.role, "fundRequests")) return { error: "Unauthorized" };
 
-  const req = await prisma.fundRequest.findUnique({ where: { id: requestId } });
+  const req = await prisma.fundRequest.findUnique({
+    where: { id: requestId },
+    include: { student: { include: { profile: { include: { user: { select: { username: true } } } } } } },
+  });
   if (!req || req.status !== "PENDING") return { error: "Request not found or already processed" };
 
-  if (!notes?.trim()) return { error: "A reason is required when denying a request" };
+  const denialReason = notes?.trim();
+  if (!denialReason) return { error: "A reason is required when denying a request" };
+
+  const deniedAt = new Date();
 
   await prisma.fundRequest.update({
     where: { id: requestId },
     data: {
       status: "DENIED",
-      notes,
+      notes: denialReason,
       reviewedBy: session.user.name,
-      reviewedAt: new Date(),
+      reviewedAt: deniedAt,
     },
   });
+
+  try {
+    if (req.student.profile) {
+      await sendFundRequestDecisionEmail({
+        to: req.student.profile.user.username,
+        parentName: `${req.student.profile.firstName} ${req.student.profile.lastName}`,
+        studentName: `${req.student.firstName} ${req.student.lastName}`,
+        studentId: req.student.id,
+        amount: Number(req.amount).toFixed(2),
+        reason: denialReason,
+        status: "DENIED",
+        date: deniedAt.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }),
+      });
+    }
+  } catch { /* email failure must not fail the denial */ }
 
   revalidatePath("/admin/fund-requests");
   return { success: true };

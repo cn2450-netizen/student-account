@@ -10,6 +10,7 @@ vi.mock("@/lib/prisma", () => ({
     parentProfile: { findUnique: vi.fn(), create: vi.fn() },
     student: { findMany: vi.fn(), findUnique: vi.fn(), update: vi.fn() },
     fundraisingEntry: { create: vi.fn() },
+    fundRequest: { findUnique: vi.fn(), update: vi.fn() },
     $transaction: vi.fn(),
   },
 }));
@@ -20,6 +21,7 @@ vi.mock("@/lib/email", () => ({
   sendDepositReceipt: vi.fn().mockResolvedValue(true),
   sendApprovalEmail: vi.fn().mockResolvedValue(true),
   sendWithdrawReceipt: vi.fn().mockResolvedValue(true),
+  sendFundRequestDecisionEmail: vi.fn().mockResolvedValue(true),
 }));
 
 vi.mock("bcryptjs", () => ({
@@ -33,8 +35,8 @@ vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 
 import { prisma } from "@/lib/prisma";
 import { getCurrentSession } from "@/lib/auth";
-import { sendDepositReceipt, sendApprovalEmail } from "@/lib/email";
-import { advanceGrades, approveAccountRequest, addFundraisingEntry } from "@/app/actions";
+import { sendDepositReceipt, sendApprovalEmail, sendFundRequestDecisionEmail } from "@/lib/email";
+import { advanceGrades, approveAccountRequest, addFundraisingEntry, denyFundRequest } from "@/app/actions";
 
 // ── Typed references to the mocked prisma sub-objects ────────────────────────
 // vi.mocked() gives TypeScript the mock type so .mockResolvedValue etc. work.
@@ -537,5 +539,49 @@ describe("addFundraisingEntry()", () => {
     vi.mocked(sendDepositReceipt).mockRejectedValueOnce(new Error("SMTP down"));
 
     expect((await addFundraisingEntry({}, makeFormData(VALID_FIELDS))).success).toBe(true);
+  });
+});
+
+describe("denyFundRequest()", () => {
+  const PENDING_REQUEST = {
+    id: "req-1",
+    studentId: "student-1",
+    description: "Field trip",
+    amount: 45,
+    status: "PENDING",
+    notes: null,
+    student: {
+      id: "student-1",
+      firstName: "Alice",
+      lastName: "Doe",
+      profile: {
+        firstName: "Jane",
+        lastName: "Doe",
+        user: { username: "parent@example.com" },
+      },
+    },
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mp.fundRequest.findUnique.mockResolvedValue(PENDING_REQUEST as never);
+    mp.fundRequest.update.mockResolvedValue({} as never);
+  });
+
+  it("sends a denial email with the rejection reason to the parent", async () => {
+    vi.mocked(getCurrentSession).mockResolvedValue(treasurerSession as never);
+
+    await denyFundRequest("req-1", "Missing paperwork");
+
+    expect(sendFundRequestDecisionEmail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: "parent@example.com",
+        parentName: "Jane Doe",
+        studentName: "Alice Doe",
+        studentId: "student-1",
+        status: "DENIED",
+        reason: "Missing paperwork",
+      }),
+    );
   });
 });

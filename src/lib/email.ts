@@ -12,6 +12,8 @@ const CONFIG_KEYS = [
   "email.depositBody",
   "email.approvalSubject",
   "email.approvalBody",
+  "email.fundRequestDeniedSubject",
+  "email.fundRequestDeniedBody",
   "email.withdrawEnabled",
   "email.withdrawSubject",
   "email.withdrawBody",
@@ -51,6 +53,18 @@ export const DEFAULT_APPROVAL_BODY = [
   "<p>If you have any questions, please contact your school organization.</p>",
 ].join("\n");
 
+export const DEFAULT_FUND_REQUEST_DENIED_SUBJECT = "Fund request denied — {{studentName}}";
+export const DEFAULT_FUND_REQUEST_DENIED_BODY = [
+  "<p>Hi {{parentName}},</p>",
+  "<p>Your fund request for <strong>{{studentName}}</strong> has been denied.</p>",
+  "<p>",
+  "  <strong>Amount:</strong> ${{amount}}<br>",
+  "  <strong>Reason:</strong> {{reason}}<br>",
+  "  <strong>Date:</strong> {{date}}",
+  "</p>",
+  "<p>If you have any questions, please contact your school organization.</p>",
+].join("\n");
+
 export async function getEmailConfig() {
   const rows = await prisma.appConfig.findMany({ where: { key: { in: [...CONFIG_KEYS] } } });
   const m = Object.fromEntries(rows.map((r) => [r.key, r.value]));
@@ -65,6 +79,8 @@ export async function getEmailConfig() {
     depositBody: m["email.depositBody"] ?? DEFAULT_DEPOSIT_BODY,
     approvalSubject: m["email.approvalSubject"] ?? DEFAULT_APPROVAL_SUBJECT,
     approvalBody: m["email.approvalBody"] ?? DEFAULT_APPROVAL_BODY,
+    fundRequestDeniedSubject: m["email.fundRequestDeniedSubject"] ?? DEFAULT_FUND_REQUEST_DENIED_SUBJECT,
+    fundRequestDeniedBody: m["email.fundRequestDeniedBody"] ?? DEFAULT_FUND_REQUEST_DENIED_BODY,
     withdrawEnabled: m["email.withdrawEnabled"] === "true",
     withdrawSubject: m["email.withdrawSubject"] ?? DEFAULT_WITHDRAW_SUBJECT,
     withdrawBody: m["email.withdrawBody"] ?? DEFAULT_WITHDRAW_BODY,
@@ -184,6 +200,54 @@ export async function sendApprovalEmail(opts: {
         studentName: null,
         amount: null,
         description: null,
+        emailSent,
+      },
+    });
+  } catch { /* receipt logging is best-effort */ }
+
+  return emailSent;
+}
+
+export async function sendFundRequestDecisionEmail(opts: {
+  to: string;
+  parentName: string;
+  studentName: string;
+  studentId?: string;
+  amount: string;
+  reason: string;
+  status: "APPROVED" | "DENIED";
+  date: string;
+}): Promise<boolean> {
+  const cfg = await getEmailConfig();
+  const vars: Record<string, string> = {
+    parentName: opts.parentName,
+    studentName: opts.studentName,
+    amount: opts.amount,
+    reason: opts.reason,
+    date: opts.date,
+  };
+
+  const subject = opts.status === "APPROVED"
+    ? render(cfg.approvalSubject, vars)
+    : render(cfg.fundRequestDeniedSubject, vars);
+  const html = opts.status === "APPROVED"
+    ? render(cfg.approvalBody, vars)
+    : render(cfg.fundRequestDeniedBody, vars);
+
+  const emailSent = await trySend(cfg, opts.to, subject, html);
+
+  try {
+    await prisma.emailReceipt.create({
+      data: {
+        type: opts.status === "APPROVED" ? "approval" : "denial",
+        toEmail: opts.to,
+        toName: opts.parentName,
+        subject,
+        htmlBody: html,
+        studentId: opts.studentId ?? null,
+        studentName: opts.studentName,
+        amount: opts.amount,
+        description: opts.reason,
         emailSent,
       },
     });
