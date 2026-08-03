@@ -13,6 +13,8 @@ export default async function AdminFundraisingPage() {
 
   const [raw, students, fundraisers] = await Promise.all([
     prisma.fundraisingEntry.findMany({
+      // Graduated students' entries move to the Graduated Seniors page, not this ledger.
+      where: { student: { graduated: false } },
       include: {
         student: {
           select: {
@@ -25,7 +27,7 @@ export default async function AdminFundraisingPage() {
       orderBy: { date: "desc" },
       take: 200,
     }),
-    canAdd ? prisma.student.findMany({ orderBy: [{ firstName: "asc" }] }) : Promise.resolve([]),
+    canAdd ? prisma.student.findMany({ where: { graduated: false }, orderBy: [{ firstName: "asc" }] }) : Promise.resolve([]),
     canAdd ? prisma.fundraiser.findMany({ where: { active: true }, orderBy: { name: "asc" } }) : Promise.resolve([]),
   ]);
 

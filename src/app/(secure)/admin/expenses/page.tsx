@@ -5,6 +5,8 @@ export default async function AdminExpensesPage() {
   await requirePermission("admin");
 
   const raw = await prisma.expenseEntry.findMany({
+    // Graduated students' entries move to the Graduated Seniors page, not this ledger.
+    where: { student: { graduated: false } },
     include: {
       student: {
         select: {
