@@ -1041,6 +1041,79 @@ export async function approveGraduationTransfer(
   return { success: true };
 }
 
+// ─── Transfer a graduated student's balance to a sibling (treasurer / admin) ─
+
+export async function transferGraduatedBalance(
+  fromStudentId: string,
+  toStudentId: string,
+): Promise<{ error?: string; success?: boolean; amount?: number }> {
+  const session = await getCurrentSession();
+  if (!session?.user || (!can(session.user.role, "admin") && !can(session.user.role, "fundRequests"))) {
+    return { error: "Unauthorized" };
+  }
+
+  const fromStudent = await prisma.student.findUnique({
+    where: { id: fromStudentId },
+    include: {
+      fundraising: { select: { amount: true } },
+      expenses: { select: { amount: true } },
+    },
+  });
+  if (!fromStudent) return { error: "Student not found" };
+  if (!fromStudent.graduated) return { error: "Student has not graduated" };
+  if (fromStudent.transferApproved) return { error: "Transfer already approved" };
+
+  const toStudent = await prisma.student.findUnique({ where: { id: toStudentId } });
+  if (!toStudent) return { error: "Destination student not found" };
+  if (toStudent.profileId !== fromStudent.profileId) {
+    return { error: "Destination student must belong to the same parent" };
+  }
+  if (toStudent.graduated) return { error: "Cannot transfer to a graduated student" };
+
+  const raised = fromStudent.fundraising.reduce((sum, e) => sum + Number(e.amount), 0);
+  const spent = fromStudent.expenses.reduce((sum, e) => sum + Number(e.amount), 0);
+  const balance = raised - spent;
+  if (balance <= 0) return { error: "This account has no remaining balance to transfer" };
+
+  const now = new Date();
+  const fromName = `${fromStudent.firstName} ${fromStudent.lastName}`;
+  const toName = `${toStudent.firstName} ${toStudent.lastName}`;
+
+  await prisma.$transaction([
+    prisma.expenseEntry.create({
+      data: {
+        studentId: fromStudentId,
+        amount: balance,
+        description: `Balance transferred to ${toName}`,
+        date: now,
+      },
+    }),
+    prisma.fundraisingEntry.create({
+      data: {
+        studentId: toStudentId,
+        amount: balance,
+        description: `Balance transferred from ${fromName}`,
+        date: now,
+      },
+    }),
+    prisma.student.update({
+      where: { id: fromStudentId },
+      data: {
+        transferApproved: true,
+        transferApprovedAt: now,
+        transferApprovedBy: session.user.name,
+        transferNotes: `Transferred $${balance.toFixed(2)} to ${toName}`,
+      },
+    }),
+  ]);
+
+  revalidatePath("/admin/graduated");
+  revalidatePath("/admin/fundraising");
+  revalidatePath("/admin/expenses");
+  revalidatePath("/students");
+  return { success: true, amount: balance };
+}
+
 // ─── President / Admin: unlock permanently locked account ────────────────────
 
 export async function unlockAccount(

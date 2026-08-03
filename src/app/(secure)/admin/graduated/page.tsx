@@ -10,7 +10,18 @@ export default async function AdminGraduatedPage() {
     prisma.student.findMany({
       where: { graduated: true },
       include: {
-        profile: { select: { firstName: true, lastName: true, phone: true } },
+        profile: {
+          select: {
+            firstName: true,
+            lastName: true,
+            phone: true,
+            students: {
+              where: { graduated: false },
+              select: { id: true, firstName: true, lastName: true },
+              orderBy: { firstName: "asc" },
+            },
+          },
+        },
         fundraising: { select: { amount: true } },
         expenses: { select: { amount: true } },
       },
@@ -38,7 +49,8 @@ export default async function AdminGraduatedPage() {
       transferApprovedAt: s.transferApprovedAt,
       transferApprovedBy: s.transferApprovedBy,
       transferNotes: s.transferNotes,
-      parent: s.profile,
+      parent: s.profile ? { firstName: s.profile.firstName, lastName: s.profile.lastName, phone: s.profile.phone } : null,
+      siblings: s.profile?.students ?? [],
       raised,
       spent,
       balance: raised - spent,

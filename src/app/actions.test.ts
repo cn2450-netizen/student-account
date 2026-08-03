@@ -63,6 +63,7 @@ import {
   editFundraisingEntry,
   submitFundRequest,
   approveFundRequest,
+  transferGraduatedBalance,
 } from "@/app/actions";
 
 // ── Typed references to the mocked prisma sub-objects ────────────────────────
@@ -1347,5 +1348,116 @@ describe("approveFundRequest() graduated check", () => {
     const result = await approveFundRequest("req-1");
 
     expect(result).toEqual({ success: true });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// transferGraduatedBalance()
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("transferGraduatedBalance()", () => {
+  const GRADUATED_SENIOR = {
+    id: "senior-1",
+    firstName: "Alice",
+    lastName: "Doe",
+    profileId: "profile-1",
+    graduated: true,
+    transferApproved: false,
+    fundraising: [{ amount: 100 }],
+    expenses: [{ amount: 40 }],
+  };
+  const SIBLING = {
+    id: "sibling-1",
+    firstName: "Bob",
+    lastName: "Doe",
+    profileId: "profile-1",
+    graduated: false,
+  };
+
+  function mockStudents(from: unknown, to: unknown) {
+    mp.student.findUnique.mockImplementation(async ({ where }: { where: { id: string } }) => {
+      if (where.id === "senior-1") return from as never;
+      if (where.id === "sibling-1") return to as never;
+      return null as never;
+    });
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(getCurrentSession).mockResolvedValue(treasurerSession as never);
+    mockStudents(GRADUATED_SENIOR, SIBLING);
+    mp.$transaction.mockResolvedValue([{}, {}, {}] as never);
+  });
+
+  it("returns Unauthorized for a role without admin/fundRequests permission", async () => {
+    vi.mocked(getCurrentSession).mockResolvedValue(parentSession as never);
+    expect(await transferGraduatedBalance("senior-1", "sibling-1")).toEqual({ error: "Unauthorized" });
+  });
+
+  it("returns an error when the source student doesn't exist", async () => {
+    mockStudents(null, SIBLING);
+    const result = await transferGraduatedBalance("senior-1", "sibling-1");
+    expect(result).toEqual({ error: "Student not found" });
+  });
+
+  it("returns an error when the source student hasn't graduated", async () => {
+    mockStudents({ ...GRADUATED_SENIOR, graduated: false }, SIBLING);
+    const result = await transferGraduatedBalance("senior-1", "sibling-1");
+    expect(result.error).toMatch(/has not graduated/i);
+  });
+
+  it("returns an error when the transfer was already approved", async () => {
+    mockStudents({ ...GRADUATED_SENIOR, transferApproved: true }, SIBLING);
+    const result = await transferGraduatedBalance("senior-1", "sibling-1");
+    expect(result.error).toMatch(/already approved/i);
+  });
+
+  it("returns an error when the destination student doesn't exist", async () => {
+    mockStudents(GRADUATED_SENIOR, null);
+    const result = await transferGraduatedBalance("senior-1", "sibling-1");
+    expect(result).toEqual({ error: "Destination student not found" });
+  });
+
+  it("returns an error when the destination student belongs to a different parent", async () => {
+    mockStudents(GRADUATED_SENIOR, { ...SIBLING, profileId: "profile-2" });
+    const result = await transferGraduatedBalance("senior-1", "sibling-1");
+    expect(result.error).toMatch(/same parent/i);
+  });
+
+  it("returns an error when the destination student has also graduated", async () => {
+    mockStudents(GRADUATED_SENIOR, { ...SIBLING, graduated: true });
+    const result = await transferGraduatedBalance("senior-1", "sibling-1");
+    expect(result.error).toMatch(/cannot transfer to a graduated student/i);
+  });
+
+  it("returns an error when there is no remaining balance", async () => {
+    mockStudents({ ...GRADUATED_SENIOR, fundraising: [{ amount: 40 }], expenses: [{ amount: 40 }] }, SIBLING);
+    const result = await transferGraduatedBalance("senior-1", "sibling-1");
+    expect(result.error).toMatch(/no remaining balance/i);
+  });
+
+  it("transfers the full remaining balance and marks the transfer approved", async () => {
+    const result = await transferGraduatedBalance("senior-1", "sibling-1");
+
+    expect(result).toEqual({ success: true, amount: 60 });
+    expect(mp.expenseEntry.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ studentId: "senior-1", amount: 60, description: expect.stringContaining("Bob Doe") }),
+      }),
+    );
+    expect(mp.fundraisingEntry.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ studentId: "sibling-1", amount: 60, description: expect.stringContaining("Alice Doe") }),
+      }),
+    );
+    expect(mp.student.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "senior-1" },
+        data: expect.objectContaining({
+          transferApproved: true,
+          transferApprovedBy: "treasurer@school.org",
+        }),
+      }),
+    );
   });
 });
