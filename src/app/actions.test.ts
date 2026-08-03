@@ -11,7 +11,8 @@ vi.mock("@/lib/prisma", () => ({
     student: { findMany: vi.fn(), findUnique: vi.fn(), update: vi.fn() },
     fundraisingEntry: { create: vi.fn(), findUnique: vi.fn(), update: vi.fn() },
     fundraisingEntryEdit: { create: vi.fn() },
-    fundRequest: { findUnique: vi.fn(), update: vi.fn() },
+    fundRequest: { findUnique: vi.fn(), update: vi.fn(), create: vi.fn() },
+    expenseEntry: { create: vi.fn() },
     passwordResetToken: { findFirst: vi.fn(), findUnique: vi.fn(), create: vi.fn(), update: vi.fn() },
     $transaction: vi.fn(),
   },
@@ -60,6 +61,8 @@ import {
   unlockAccount,
   updateStaffEmail,
   editFundraisingEntry,
+  submitFundRequest,
+  approveFundRequest,
 } from "@/app/actions";
 
 // ── Typed references to the mocked prisma sub-objects ────────────────────────
@@ -487,6 +490,16 @@ describe("addFundraisingEntry()", () => {
   it("returns Unauthorized when the role has neither manageFundraising nor ownFunds", async () => {
     vi.mocked(getCurrentSession).mockResolvedValue({ user: { id: "u-1", name: "x", role: "BOARD_MEMBER" } } as never);
     expect((await addFundraisingEntry({}, makeFormData(VALID_FIELDS))).error).toMatch(/unauthorized/i);
+  });
+
+  it("rejects when the student has graduated", async () => {
+    vi.mocked(getCurrentSession).mockResolvedValue(treasurerSession as never);
+    mp.student.findUnique.mockResolvedValue({ ...STUDENT_WITH_PROFILE, graduated: true } as never);
+
+    const result = await addFundraisingEntry({}, makeFormData(VALID_FIELDS));
+
+    expect(result.error).toMatch(/graduated/i);
+    expect(mp.fundraisingEntry.create).not.toHaveBeenCalled();
   });
 
   // ── Input validation ───────────────────────────────────────────────────────
@@ -1257,5 +1270,82 @@ describe("saveBackupConfig()", () => {
     expect(saveBackupSchedule).toHaveBeenCalledWith(
       expect.objectContaining({ scheduleEnabled: true }),
     );
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// submitFundRequest() — graduated-account check
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("submitFundRequest() graduated check", () => {
+  function formData(fields: Record<string, string>) {
+    const fd = new FormData();
+    for (const [k, v] of Object.entries(fields)) fd.set(k, v);
+    return fd;
+  }
+  const VALID_FIELDS = { studentId: "student-1", description: "Field trip fee", amount: "45" };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(getCurrentSession).mockResolvedValue(parentSession as never);
+    mp.parentProfile.findUnique.mockResolvedValue({ id: "profile-1" } as never);
+    mp.fundRequest.create.mockResolvedValue({} as never);
+  });
+
+  it("rejects when the student has graduated", async () => {
+    mp.student.findUnique.mockResolvedValue({ id: "student-1", profileId: "profile-1", graduated: true } as never);
+
+    const result = await submitFundRequest({}, formData(VALID_FIELDS));
+
+    expect(result.error).toMatch(/graduated/i);
+    expect(mp.fundRequest.create).not.toHaveBeenCalled();
+  });
+
+  it("allows the request when the student has not graduated", async () => {
+    mp.student.findUnique.mockResolvedValue({ id: "student-1", profileId: "profile-1", graduated: false } as never);
+
+    const result = await submitFundRequest({}, formData(VALID_FIELDS));
+
+    expect(result).toEqual({ success: true });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// approveFundRequest() — graduated-account check
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("approveFundRequest() graduated check", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(getCurrentSession).mockResolvedValue(treasurerSession as never);
+    mp.$transaction.mockResolvedValue([{}, {}] as never);
+  });
+
+  it("rejects approval when the student has since graduated", async () => {
+    mp.fundRequest.findUnique.mockResolvedValue({
+      id: "req-1",
+      status: "PENDING",
+      student: { graduated: true },
+    } as never);
+
+    const result = await approveFundRequest("req-1");
+
+    expect(result.error).toMatch(/graduated/i);
+    expect(mp.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("allows approval when the student has not graduated", async () => {
+    mp.fundRequest.findUnique.mockResolvedValue({
+      id: "req-1",
+      status: "PENDING",
+      studentId: "student-1",
+      amount: 45,
+      description: "Field trip",
+      student: { id: "student-1", graduated: false, profile: null },
+    } as never);
+
+    const result = await approveFundRequest("req-1");
+
+    expect(result).toEqual({ success: true });
   });
 });

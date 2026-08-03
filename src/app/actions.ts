@@ -11,6 +11,7 @@ import { getCurrentSession } from "@/lib/auth";
 import { can } from "@/lib/rbac";
 import { sendDepositReceipt, sendAccountApprovedEmail, sendWithdrawReceipt, sendFundRequestDecisionEmail, sendPasswordResetEmail, sendStaffInviteEmail, resendReceiptEmail as resendReceiptEmailInternal } from "@/lib/email";
 import { runBackup, saveBackupSchedule } from "@/lib/backup";
+import { runGradeAdvancement } from "@/lib/gradeAdvancement";
 
 // ─── Change password on first login ─────────────────────────────────────────
 
@@ -406,19 +407,24 @@ export async function addFundraisingEntry(
     return { error: "Unauthorized" };
   }
 
+  const student = await prisma.student.findUnique({
+    where: { id: parsed.data.studentId },
+    include: { profile: { include: { user: { select: { username: true } } } } },
+  });
+  if (!student) return { error: "Student not found" };
+
   // Verify the student belongs to this parent (unless fundraising manager)
   if (!can(session.user.role, "manageFundraising")) {
     const profile = await prisma.parentProfile.findUnique({
       where: { userId: session.user.id },
     });
-    if (!profile) return { error: "Profile not found" };
-
-    const student = await prisma.student.findUnique({
-      where: { id: parsed.data.studentId },
-    });
-    if (!student || student.profileId !== profile.id) {
+    if (!profile || student.profileId !== profile.id) {
       return { error: "Student not found" };
     }
+  }
+
+  if (student.graduated) {
+    return { error: "This student has graduated — deposits can no longer be added to their account" };
   }
 
   const entryDate = parsed.data.date ? new Date(parsed.data.date) : new Date();
@@ -434,11 +440,7 @@ export async function addFundraisingEntry(
 
   // Send deposit receipt to the student's parent
   try {
-    const student = await prisma.student.findUnique({
-      where: { id: parsed.data.studentId },
-      include: { profile: { include: { user: { select: { username: true } } } } },
-    });
-    if (student?.profile) {
+    if (student.profile) {
       await sendDepositReceipt({
         to: student.profile.user.username,
         parentName: `${student.profile.firstName} ${student.profile.lastName}`,
@@ -800,6 +802,9 @@ export async function submitFundRequest(
 
   const student = await prisma.student.findUnique({ where: { id: parsed.data.studentId } });
   if (!student || student.profileId !== profile.id) return { error: "Student not found" };
+  if (student.graduated) {
+    return { error: "This student has graduated — fund requests can no longer be submitted for their account" };
+  }
 
   await prisma.fundRequest.create({
     data: {
@@ -827,6 +832,9 @@ export async function approveFundRequest(
     include: { student: { include: { profile: { include: { user: { select: { username: true } } } } } } },
   });
   if (!req || req.status !== "PENDING") return { error: "Request not found or already processed" };
+  if (req.student.graduated) {
+    return { error: "This student has graduated — the request can no longer be approved" };
+  }
 
   const approvedAt = new Date();
 
@@ -995,60 +1003,8 @@ export async function advanceGrades(
     return { error: "Unauthorized" };
   }
 
-  const now = new Date();
-  const currentYear = now.getFullYear();
-
-  const [dateConfig, yearConfig] = await Promise.all([
-    prisma.appConfig.findUnique({ where: { key: "gradeAdvancementDate" } }),
-    prisma.appConfig.findUnique({ where: { key: "gradeAdvancementYear" } }),
-  ]);
-
-  const [configMonth, configDay] = (dateConfig?.value ?? "7/1").split("/").map(Number);
-  const advancementDate = new Date(currentYear, configMonth - 1, configDay);
-  const advancementLabel = advancementDate.toLocaleDateString("en-US", { month: "long", day: "numeric" });
-
-  if (!force && now < advancementDate) {
-    return { skipped: `Grade advancement runs on or after ${advancementLabel}. Current date is ${now.toLocaleDateString()}.` };
-  }
-
-  if (!force && yearConfig?.value === String(currentYear)) {
-    return { skipped: `Grades have already been advanced for ${currentYear}.` };
-  }
-
-  const students = await prisma.student.findMany({
-    where: { graduated: false },
-    select: { id: true, grade: true },
-  });
-
-  let advanced = 0;
-  let graduated = 0;
-
-  await prisma.$transaction(async (tx) => {
-    for (const s of students) {
-      const gradeNum = parseInt(s.grade ?? "", 10);
-      if (isNaN(gradeNum)) continue; // non-numeric grade — skip
-
-      if (gradeNum >= 12) {
-        await tx.student.update({
-          where: { id: s.id },
-          data: { graduated: true, graduatedAt: now },
-        });
-        graduated++;
-      } else {
-        await tx.student.update({
-          where: { id: s.id },
-          data: { grade: String(gradeNum + 1) },
-        });
-        advanced++;
-      }
-    }
-
-    await tx.appConfig.upsert({
-      where: { key: "gradeAdvancementYear" },
-      update: { value: String(currentYear) },
-      create: { key: "gradeAdvancementYear", value: String(currentYear) },
-    });
-  });
+  const { advanced, graduated, skipped } = await runGradeAdvancement({ force });
+  if (skipped) return { skipped };
 
   revalidatePath("/admin/students");
   revalidatePath("/admin/graduated");
