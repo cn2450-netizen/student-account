@@ -1,13 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { EventEmitter } from "events";
 import { PassThrough } from "stream";
+import { mockDeep, type DeepMockProxy } from "vitest-mock-extended";
+import type { PrismaClient } from "@/generated/prisma/client";
 
 // ── Module mocks (hoisted before imports) ────────────────────────────────────
+// mockDeep<PrismaClient>() gives every model method (however generic its
+// signature) a real vitest mock fn underneath, which vi.mocked()/manual
+// typing can't do for Prisma's generic client methods.
 
 vi.mock("@/lib/prisma", () => ({
-  prisma: {
-    appConfig: { findMany: vi.fn(), upsert: vi.fn() },
-  },
+  prisma: mockDeep<PrismaClient>(),
 }));
 
 vi.mock("fs/promises", () => ({
@@ -45,7 +48,7 @@ import {
   DEFAULT_RETENTION_COUNT,
 } from "./backup";
 
-const mp = vi.mocked(prisma);
+const mp = prisma as unknown as DeepMockProxy<PrismaClient>;
 
 // ── Fake child_process / stream helpers ───────────────────────────────────────
 
