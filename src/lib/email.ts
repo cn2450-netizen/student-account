@@ -1,4 +1,5 @@
 import nodemailer from "nodemailer";
+import sanitizeHtml from "sanitize-html";
 import { prisma } from "./prisma";
 
 const CONFIG_KEYS = [
@@ -75,8 +76,32 @@ export async function getEmailConfig() {
   };
 }
 
+// Vars are always plain user-supplied data (names, descriptions, amounts) —
+// the template strings themselves carry the only intentional HTML — so every
+// substitution is escaped to prevent stored XSS via e.g. a parent's name.
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 function render(template: string, vars: Record<string, string>): string {
-  return template.replace(/\{\{(\w+)\}\}/g, (_, k) => vars[k] ?? `{{${k}}}`);
+  return template.replace(/\{\{(\w+)\}\}/g, (_, k) => (k in vars ? escapeHtml(vars[k]) : `{{${k}}}`));
+}
+
+// Defense-in-depth for displaying a stored EmailReceipt.htmlBody in the admin
+// UI: render() already escapes vars going forward, but this also neutralizes
+// anything persisted before that fix. Allowlist matches exactly what the
+// templates above ever emit — no need for anything broader.
+export function sanitizeReceiptHtml(html: string): string {
+  return sanitizeHtml(html, {
+    allowedTags: ["p", "strong", "br", "a"],
+    allowedAttributes: { a: ["href"] },
+    allowedSchemes: ["http", "https"],
+  });
 }
 
 async function trySend(

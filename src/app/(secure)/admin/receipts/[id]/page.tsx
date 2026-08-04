@@ -3,6 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { requireAuth } from "@/lib/secure-page";
 import { can } from "@/lib/rbac";
 import { prisma } from "@/lib/prisma";
+import { sanitizeReceiptHtml } from "@/lib/email";
 import { PrintButton } from "@/components/print-button";
 
 export default async function ReceiptDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -107,7 +108,7 @@ export default async function ReceiptDetailPage({ params }: { params: Promise<{ 
           <p className="mb-3 text-xs uppercase tracking-wide text-slate-500">Email Body</p>
           <div
             className="rounded-xl border border-slate-700 bg-slate-950/60 p-4 text-sm text-slate-200 leading-relaxed [&_a]:text-cyan-400 [&_strong]:text-slate-100"
-            dangerouslySetInnerHTML={{ __html: receipt.htmlBody }}
+            dangerouslySetInnerHTML={{ __html: sanitizeReceiptHtml(receipt.htmlBody) }}
           />
         </div>
       </div>

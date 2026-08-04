@@ -26,6 +26,7 @@ import {
   sendAccountApprovedEmail,
   sendWithdrawReceipt,
   purgeReceiptsOlderThan5Years,
+  sanitizeReceiptHtml,
   DEFAULT_DEPOSIT_SUBJECT,
   DEFAULT_DEPOSIT_BODY,
   DEFAULT_WITHDRAW_SUBJECT,
@@ -181,6 +182,22 @@ describe("sendDepositReceipt()", () => {
     await sendDepositReceipt(DEPOSIT_OPTS);
 
     expect(prisma.emailReceipt.create).toHaveBeenCalledOnce();
+  });
+
+  it("HTML-escapes user-supplied fields to prevent stored XSS", async () => {
+    vi.mocked(prisma.appConfig.findMany).mockResolvedValue([]);
+
+    await sendDepositReceipt({
+      ...DEPOSIT_OPTS,
+      parentName: '<img src=x onerror="alert(1)">',
+      description: "<script>alert(document.cookie)</script>",
+    });
+
+    const { data } = vi.mocked(prisma.emailReceipt.create).mock.calls[0][0];
+    expect(data.htmlBody).not.toContain("<img");
+    expect(data.htmlBody).not.toContain("<script>");
+    expect(data.htmlBody).toContain("&lt;img src=x onerror=&quot;alert(1)&quot;&gt;");
+    expect(data.htmlBody).toContain("&lt;script&gt;alert(document.cookie)&lt;/script&gt;");
   });
 
   it("saves correct type, recipient, and student metadata on the receipt", async () => {
@@ -521,5 +538,37 @@ describe("sendWithdrawReceipt()", () => {
     const { data } = vi.mocked(prisma.emailReceipt.create).mock.calls[0][0];
     expect(data.subject).toContain("#1");
     expect(data.htmlBody).toContain("1");
+  });
+});
+
+// ── sanitizeReceiptHtml() ────────────────────────────────────────────────────
+// Defense-in-depth for displaying a stored EmailReceipt.htmlBody: neutralizes
+// anything persisted before render() started escaping vars (see above).
+
+describe("sanitizeReceiptHtml()", () => {
+  it("strips <script> tags and their content", () => {
+    const result = sanitizeReceiptHtml("<p>Hi</p><script>alert(document.cookie)</script>");
+    expect(result).not.toContain("<script");
+    expect(result).not.toContain("alert(document.cookie)");
+  });
+
+  it("strips disallowed tags and their event-handler attributes", () => {
+    const result = sanitizeReceiptHtml('<img src=x onerror="alert(1)"><p>Hi</p>');
+    expect(result).not.toContain("<img");
+    expect(result).not.toContain("onerror");
+    expect(result).toContain("<p>Hi</p>");
+  });
+
+  it("strips javascript: URLs from links but keeps http(s) links", () => {
+    const malicious = sanitizeReceiptHtml('<a href="javascript:alert(1)">click</a>');
+    expect(malicious).not.toContain("javascript:");
+
+    const safe = sanitizeReceiptHtml('<a href="https://example.com/reset">click</a>');
+    expect(safe).toContain('href="https://example.com/reset"');
+  });
+
+  it("preserves the tags legitimate templates actually use", () => {
+    const result = sanitizeReceiptHtml("<p>Hi {{name}},</p><p><strong>Amount:</strong> $5<br>Done.</p>");
+    expect(result).toBe("<p>Hi {{name}},</p><p><strong>Amount:</strong> $5<br />Done.</p>");
   });
 });
