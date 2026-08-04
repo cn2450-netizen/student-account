@@ -1,21 +1,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { mockDeep, type DeepMockProxy } from "vitest-mock-extended";
+import type { PrismaClient } from "@/generated/prisma/client";
 
 // ── Module mocks (hoisted — factories must be self-contained) ────────────────
+// mockDeep<PrismaClient>() gives every model method (however generic its
+// signature) a real vitest mock fn underneath, which vi.mocked()/manual
+// typing can't do for Prisma's generic client methods.
 
 vi.mock("@/lib/prisma", () => ({
-  prisma: {
-    appConfig: { findUnique: vi.fn(), upsert: vi.fn() },
-    accountRequest: { findUnique: vi.fn(), update: vi.fn() },
-    user: { create: vi.fn(), findUnique: vi.fn(), findFirst: vi.fn(), update: vi.fn() },
-    parentProfile: { findUnique: vi.fn(), create: vi.fn() },
-    student: { findMany: vi.fn(), findUnique: vi.fn(), update: vi.fn() },
-    fundraisingEntry: { create: vi.fn(), findUnique: vi.fn(), update: vi.fn() },
-    fundraisingEntryEdit: { create: vi.fn() },
-    fundRequest: { findUnique: vi.fn(), update: vi.fn(), create: vi.fn() },
-    expenseEntry: { create: vi.fn() },
-    passwordResetToken: { findFirst: vi.fn(), findUnique: vi.fn(), create: vi.fn(), update: vi.fn() },
-    $transaction: vi.fn(),
-  },
+  prisma: mockDeep<PrismaClient>(),
 }));
 
 vi.mock("@/lib/auth", () => ({ getCurrentSession: vi.fn() }));
@@ -67,9 +60,10 @@ import {
 } from "@/app/actions";
 
 // ── Typed references to the mocked prisma sub-objects ────────────────────────
-// vi.mocked() gives TypeScript the mock type so .mockResolvedValue etc. work.
+// prisma is a DeepMockProxy under the hood (see mockDeep() above); this cast
+// gives TypeScript that shape so .mockResolvedValue etc. work.
 
-const mp = vi.mocked(prisma);
+const mp = prisma as unknown as DeepMockProxy<PrismaClient>;
 
 // ── Session fixtures ──────────────────────────────────────────────────────────
 
@@ -101,7 +95,7 @@ describe("advanceGrades()", () => {
   // ── Auth ───────────────────────────────────────────────────────────────────
 
   it("returns Unauthorized when there is no session", async () => {
-    vi.mocked(getCurrentSession).mockResolvedValue(null);
+    vi.mocked(getCurrentSession).mockResolvedValue(null as never);
     expect(await advanceGrades()).toEqual({ error: "Unauthorized" });
   });
 
@@ -150,9 +144,9 @@ describe("advanceGrades()", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(2025, 4, 20)); // May 20 — before June 1
 
-    mp.appConfig.findUnique.mockImplementation(async ({ where }) =>
-      where.key === "gradeAdvancementDate" ? { key: "gradeAdvancementDate", value: "6/1" } : null,
-    );
+    mp.appConfig.findUnique.mockImplementation((async ({ where }: { where: { key: string } }) =>
+      where.key === "gradeAdvancementDate" ? { key: "gradeAdvancementDate", value: "6/1" } : null
+    ) as never);
 
     const result = await advanceGrades();
     expect(result.skipped).toMatch(/June 1/i);
@@ -163,9 +157,9 @@ describe("advanceGrades()", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(2025, 5, 1)); // June 1
 
-    mp.appConfig.findUnique.mockImplementation(async ({ where }) =>
-      where.key === "gradeAdvancementDate" ? { key: "gradeAdvancementDate", value: "6/1" } : null,
-    );
+    mp.appConfig.findUnique.mockImplementation((async ({ where }: { where: { key: string } }) =>
+      where.key === "gradeAdvancementDate" ? { key: "gradeAdvancementDate", value: "6/1" } : null
+    ) as never);
 
     const result = await advanceGrades();
     expect(result.skipped).toBeUndefined();
@@ -179,9 +173,9 @@ describe("advanceGrades()", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(2025, 6, 15));
 
-    mp.appConfig.findUnique.mockImplementation(async ({ where }) =>
-      where.key === "gradeAdvancementYear" ? { key: "gradeAdvancementYear", value: "2025" } : null,
-    );
+    mp.appConfig.findUnique.mockImplementation((async ({ where }: { where: { key: string } }) =>
+      where.key === "gradeAdvancementYear" ? { key: "gradeAdvancementYear", value: "2025" } : null
+    ) as never);
 
     const result = await advanceGrades();
     expect(result.skipped).toMatch(/already been advanced for 2025/);
@@ -204,9 +198,9 @@ describe("advanceGrades()", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(2025, 6, 15));
 
-    mp.appConfig.findUnique.mockImplementation(async ({ where }) =>
-      where.key === "gradeAdvancementYear" ? { key: "gradeAdvancementYear", value: "2025" } : null,
-    );
+    mp.appConfig.findUnique.mockImplementation((async ({ where }: { where: { key: string } }) =>
+      where.key === "gradeAdvancementYear" ? { key: "gradeAdvancementYear", value: "2025" } : null
+    ) as never);
 
     const result = await advanceGrades(true);
     expect(result.skipped).toBeUndefined();
@@ -335,7 +329,7 @@ describe("approveAccountRequest()", () => {
   // ── Auth ───────────────────────────────────────────────────────────────────
 
   it("returns Unauthorized when there is no session", async () => {
-    vi.mocked(getCurrentSession).mockResolvedValue(null);
+    vi.mocked(getCurrentSession).mockResolvedValue(null as never);
     expect(await approveAccountRequest("req-1")).toEqual({ error: "Unauthorized" });
   });
 
@@ -484,7 +478,7 @@ describe("addFundraisingEntry()", () => {
   // ── Auth ───────────────────────────────────────────────────────────────────
 
   it("returns not-authenticated error when there is no session", async () => {
-    vi.mocked(getCurrentSession).mockResolvedValue(null);
+    vi.mocked(getCurrentSession).mockResolvedValue(null as never);
     expect((await addFundraisingEntry({}, makeFormData(VALID_FIELDS))).error).toMatch(/not authenticated/i);
   });
 
@@ -1022,10 +1016,10 @@ describe("updateStaffEmail()", () => {
   // username-collision check) — branch on the shape instead of chaining
   // mockResolvedValueOnce, since not every test consumes both calls.
   function mockFindUnique(target: unknown, collision: unknown = null) {
-    mp.user.findUnique.mockImplementation(async ({ where }: { where: { id?: string; username?: string } }) => {
-      if (where.id !== undefined) return target as never;
-      return collision as never;
-    });
+    mp.user.findUnique.mockImplementation((async ({ where }: { where: { id?: string; username?: string } }) => {
+      if (where.id !== undefined) return target;
+      return collision;
+    }) as never);
   }
 
   beforeEach(() => {
@@ -1375,11 +1369,11 @@ describe("transferGraduatedBalance()", () => {
   };
 
   function mockStudents(from: unknown, to: unknown) {
-    mp.student.findUnique.mockImplementation(async ({ where }: { where: { id: string } }) => {
-      if (where.id === "senior-1") return from as never;
-      if (where.id === "sibling-1") return to as never;
-      return null as never;
-    });
+    mp.student.findUnique.mockImplementation((async ({ where }: { where: { id: string } }) => {
+      if (where.id === "senior-1") return from;
+      if (where.id === "sibling-1") return to;
+      return null;
+    }) as never);
   }
 
   beforeEach(() => {
