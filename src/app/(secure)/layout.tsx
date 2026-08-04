@@ -17,7 +17,7 @@ export default async function SecureLayout({ children }: { children: React.React
     { href: "/admin/students",         label: "All Students",        visible: can(role, "allStudents") },
     { href: "/admin/receipts",         label: "Email Receipts",      visible: can(role, "fundRequests") || can(role, "allFunds") },
     { href: "/admin/fundraisers",      label: "Fundraisers",         visible: can(role, "manageFundraising") },
-    { href: "/admin/fundraising",      label: "Funds Applied",       visible: can(role, "allFunds") },
+    { href: "/admin/fundraising",      label: "Funds Applied",       visible: can(role, "allFunds") || can(role, "manageFundraising") },
     { href: "/admin/fund-requests",    label: "Funds Requested",     visible: can(role, "fundRequests") },
     { href: "/admin/graduated",        label: "Graduated Seniors",   visible: can(role, "fundRequests") },
     { href: "/students",               label: "My Students",         visible: isParent },
