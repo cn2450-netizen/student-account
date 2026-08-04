@@ -52,6 +52,7 @@ const ROLES = [
       "Dashboard",
       "Fundraisers",
       "All Students",
+      "Funds Applied",
       "Registered Parents",
     ],
   },
