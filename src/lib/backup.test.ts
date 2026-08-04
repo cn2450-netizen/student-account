@@ -234,6 +234,17 @@ describe("runBackup()", () => {
     expect(result.success).toBe(true);
   });
 
+  it("never puts the DB password in the pg_dump argv — passes it via PGPASSWORD instead", async () => {
+    mp.appConfig.findMany.mockResolvedValue([{ key: "backup.destinationPath", value: "/mnt/backup" }] as never);
+    mockSuccessfulDump();
+
+    await runBackup({ force: true });
+
+    const [, args, opts] = vi.mocked(spawn).mock.calls[0];
+    expect(args?.join(" ")).not.toContain("pass");
+    expect((opts as { env?: Record<string, string> })?.env?.PGPASSWORD).toBe("pass");
+  });
+
   it("errors when forced but no destination is configured", async () => {
     mp.appConfig.findMany.mockResolvedValue([]);
     const result = await runBackup({ force: true });

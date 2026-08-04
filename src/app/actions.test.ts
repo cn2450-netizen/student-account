@@ -34,15 +34,19 @@ vi.mock("bcryptjs", () => ({
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 
+vi.mock("next/headers", () => ({ headers: vi.fn() }));
+
 // ── Imports (resolved against mocks above) ───────────────────────────────────
 
 import { prisma } from "@/lib/prisma";
 import { getCurrentSession } from "@/lib/auth";
+import { headers } from "next/headers";
 import { sendDepositReceipt, sendAccountApprovedEmail, sendFundRequestDecisionEmail, sendPasswordResetEmail, sendStaffInviteEmail } from "@/lib/email";
 import { runBackup, saveBackupSchedule } from "@/lib/backup";
 import {
   advanceGrades,
   approveAccountRequest,
+  registerParentAccount,
   addFundraisingEntry,
   denyFundRequest,
   requestPasswordReset,
@@ -298,6 +302,81 @@ describe("advanceGrades()", () => {
     const result = await advanceGrades();
     expect(result.advanced).toBe(0);
     expect(result.graduated).toBe(0);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// registerParentAccount()
+// ─────────────────────────────────────────────────────────────────────────────
+
+function makeRegisterFormData(overrides: Partial<Record<string, string>> = {}): FormData {
+  const fd = new FormData();
+  const fields = {
+    firstName: "Jane",
+    lastName: "Doe",
+    phone: "555-0100",
+    email: "jane@example.com",
+    ...overrides,
+  };
+  for (const [k, v] of Object.entries(fields)) fd.set(k, v);
+  return fd;
+}
+
+describe("registerParentAccount()", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(headers).mockResolvedValue(new Headers({ "x-forwarded-for": "203.0.113.5" }) as never);
+    mp.accountRequest.findUnique.mockResolvedValue(null);
+    mp.user.findUnique.mockResolvedValue(null);
+    mp.accountRequest.create.mockResolvedValue({} as never);
+    mp.ipRateLimit.findUnique.mockResolvedValue(null);
+    mp.ipRateLimit.upsert.mockResolvedValue({} as never);
+    mp.ipRateLimit.update.mockResolvedValue({} as never);
+  });
+
+  it("creates an account request on a fresh submission", async () => {
+    const result = await registerParentAccount({}, makeRegisterFormData());
+    expect(result.success).toBe(true);
+    expect(prisma.accountRequest.create).toHaveBeenCalledOnce();
+  });
+
+  it("blocks once the per-IP attempt limit is reached within the window", async () => {
+    mp.ipRateLimit.findUnique.mockResolvedValue({
+      ip: "register:203.0.113.5",
+      count: 5,
+      resetAt: new Date(Date.now() + 60_000),
+    } as never);
+
+    const result = await registerParentAccount({}, makeRegisterFormData());
+
+    expect(result.error).toMatch(/too many/i);
+    expect(prisma.accountRequest.create).not.toHaveBeenCalled();
+  });
+
+  it("allows a submission once the rate-limit window has expired", async () => {
+    mp.ipRateLimit.findUnique.mockResolvedValue({
+      ip: "register:203.0.113.5",
+      count: 5,
+      resetAt: new Date(Date.now() - 1_000), // window already elapsed
+    } as never);
+
+    const result = await registerParentAccount({}, makeRegisterFormData());
+
+    expect(result.success).toBe(true);
+    expect(prisma.accountRequest.create).toHaveBeenCalledOnce();
+  });
+
+  it("scopes the rate limit per IP — a different IP is unaffected by another's count", async () => {
+    mp.ipRateLimit.findUnique.mockImplementation((async ({ where }: { where: { ip: string } }) =>
+      where.ip === "register:203.0.113.5"
+        ? { ip: where.ip, count: 5, resetAt: new Date(Date.now() + 60_000) }
+        : null
+    ) as never);
+    vi.mocked(headers).mockResolvedValue(new Headers({ "x-forwarded-for": "198.51.100.9" }) as never);
+
+    const result = await registerParentAccount({}, makeRegisterFormData());
+
+    expect(result.success).toBe(true);
   });
 });
 

@@ -106,7 +106,16 @@ function dumpDatabase(destinationPath: string): Promise<string> {
       return;
     }
 
-    const dump = spawn("pg_dump", [databaseUrl]);
+    // Strip the password out of the connection string and pass it via
+    // PGPASSWORD instead — an argv containing a password is visible to any
+    // local user via `ps aux` / `/proc/<pid>/cmdline`, an env var is not.
+    const url = new URL(databaseUrl);
+    const password = decodeURIComponent(url.password);
+    url.password = "";
+
+    const dump = spawn("pg_dump", [url.toString()], {
+      env: { ...process.env, PGPASSWORD: password },
+    });
     const gzip = createGzip();
     const out = createWriteStream(filePath);
 

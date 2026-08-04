@@ -12,7 +12,7 @@ const prisma = new PrismaClient({ adapter });
 
 async function seedAdmin() {
   const adminPassword = process.env.ADMIN_PASSWORD || randomBytes(12).toString("hex");
-  const passwordHash = await hash(adminPassword, 10);
+  const passwordHash = await hash(adminPassword, 12);
 
   const existing = await prisma.user.findUnique({ where: { username: "admin" } });
 

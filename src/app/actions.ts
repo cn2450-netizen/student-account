@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { headers } from "next/headers";
 import { hash, compare } from "bcryptjs";
 import { z } from "zod";
 
@@ -59,6 +60,12 @@ const RegisterSchema = z.object({
   email: z.string().trim().email("Valid email is required"),
 });
 
+// This form is public and unauthenticated — without a limit here, anyone can
+// flood the account-approval queue. Reuses the same IpRateLimit table as
+// login (auth.ts), namespaced so the two don't share a counter.
+const REGISTER_IP_WINDOW_MS = 60 * 60 * 1000; // 1 hour
+const REGISTER_IP_MAX_ATTEMPTS = 5;
+
 export async function registerParentAccount(
   _prev: { error?: string; success?: boolean },
   formData: FormData,
@@ -72,6 +79,33 @@ export async function registerParentAccount(
 
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
+  }
+
+  const h = await headers();
+  const ip =
+    (h.get("x-forwarded-for") ?? "").split(",")[0].trim() ||
+    h.get("x-real-ip") ||
+    "unknown";
+  const rateLimitKey = `register:${ip}`;
+  const now = new Date();
+  const ipRecord = await prisma.ipRateLimit.findUnique({ where: { ip: rateLimitKey } });
+  const windowActive = !!ipRecord && ipRecord.resetAt > now;
+
+  if (windowActive && ipRecord!.count >= REGISTER_IP_MAX_ATTEMPTS) {
+    return { error: "Too many registration attempts from this network. Please try again later." };
+  }
+
+  if (windowActive) {
+    await prisma.ipRateLimit.update({
+      where: { ip: rateLimitKey },
+      data: { count: { increment: 1 } },
+    });
+  } else {
+    await prisma.ipRateLimit.upsert({
+      where: { ip: rateLimitKey },
+      update: { count: 1, resetAt: new Date(now.getTime() + REGISTER_IP_WINDOW_MS) },
+      create: { ip: rateLimitKey, count: 1, resetAt: new Date(now.getTime() + REGISTER_IP_WINDOW_MS) },
+    });
   }
 
   const { firstName, lastName, phone, email } = parsed.data;
