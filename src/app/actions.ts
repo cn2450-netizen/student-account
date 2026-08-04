@@ -60,9 +60,41 @@ const RegisterSchema = z.object({
   email: z.string().trim().email("Valid email is required"),
 });
 
+// Shared IP-based throttle for public, unauthenticated actions below — backed
+// by the same IpRateLimit table login uses (auth.ts), namespaced per action
+// (registerParentAccount / requestPasswordReset) so counters never collide.
+async function getClientIp(): Promise<string> {
+  const h = await headers();
+  return (
+    (h.get("x-forwarded-for") ?? "").split(",")[0].trim() ||
+    h.get("x-real-ip") ||
+    "unknown"
+  );
+}
+
+async function checkIpRateLimit(key: string, windowMs: number, maxAttempts: number): Promise<boolean> {
+  const now = new Date();
+  const record = await prisma.ipRateLimit.findUnique({ where: { ip: key } });
+  const windowActive = !!record && record.resetAt > now;
+
+  if (windowActive && record!.count >= maxAttempts) {
+    return false;
+  }
+
+  if (windowActive) {
+    await prisma.ipRateLimit.update({ where: { ip: key }, data: { count: { increment: 1 } } });
+  } else {
+    await prisma.ipRateLimit.upsert({
+      where: { ip: key },
+      update: { count: 1, resetAt: new Date(now.getTime() + windowMs) },
+      create: { ip: key, count: 1, resetAt: new Date(now.getTime() + windowMs) },
+    });
+  }
+  return true;
+}
+
 // This form is public and unauthenticated — without a limit here, anyone can
-// flood the account-approval queue. Reuses the same IpRateLimit table as
-// login (auth.ts), namespaced so the two don't share a counter.
+// flood the account-approval queue.
 const REGISTER_IP_WINDOW_MS = 60 * 60 * 1000; // 1 hour
 const REGISTER_IP_MAX_ATTEMPTS = 5;
 
@@ -81,31 +113,10 @@ export async function registerParentAccount(
     return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
   }
 
-  const h = await headers();
-  const ip =
-    (h.get("x-forwarded-for") ?? "").split(",")[0].trim() ||
-    h.get("x-real-ip") ||
-    "unknown";
-  const rateLimitKey = `register:${ip}`;
-  const now = new Date();
-  const ipRecord = await prisma.ipRateLimit.findUnique({ where: { ip: rateLimitKey } });
-  const windowActive = !!ipRecord && ipRecord.resetAt > now;
-
-  if (windowActive && ipRecord!.count >= REGISTER_IP_MAX_ATTEMPTS) {
+  const ip = await getClientIp();
+  const allowed = await checkIpRateLimit(`register:${ip}`, REGISTER_IP_WINDOW_MS, REGISTER_IP_MAX_ATTEMPTS);
+  if (!allowed) {
     return { error: "Too many registration attempts from this network. Please try again later." };
-  }
-
-  if (windowActive) {
-    await prisma.ipRateLimit.update({
-      where: { ip: rateLimitKey },
-      data: { count: { increment: 1 } },
-    });
-  } else {
-    await prisma.ipRateLimit.upsert({
-      where: { ip: rateLimitKey },
-      update: { count: 1, resetAt: new Date(now.getTime() + REGISTER_IP_WINDOW_MS) },
-      create: { ip: rateLimitKey, count: 1, resetAt: new Date(now.getTime() + REGISTER_IP_WINDOW_MS) },
-    });
   }
 
   const { firstName, lastName, phone, email } = parsed.data;
@@ -162,13 +173,22 @@ async function createPasswordResetLink(userId: string): Promise<string> {
   return `${baseUrl}/reset-password?token=${rawToken}`;
 }
 
+// IP-scoped, independent of the per-account cooldown above: that cooldown
+// stops one target account from being mail-bombed, but doesn't stop a single
+// IP from firing requests at many different accounts to abuse the mail relay.
+const RESET_IP_WINDOW_MS = 60 * 60 * 1000; // 1 hour
+const RESET_IP_MAX_ATTEMPTS = 10;
+
 export async function requestPasswordReset(
   _prev: { success?: boolean },
   formData: FormData,
 ): Promise<{ success?: boolean }> {
   const email = (formData.get("email") as string | null)?.toLowerCase().trim();
 
-  if (email) {
+  const ip = await getClientIp();
+  const allowed = await checkIpRateLimit(`reset:${ip}`, RESET_IP_WINDOW_MS, RESET_IP_MAX_ATTEMPTS);
+
+  if (allowed && email) {
     const user = await prisma.user.findUnique({ where: { username: email } });
     if (user) {
       const recent = await prisma.passwordResetToken.findFirst({
@@ -184,7 +204,8 @@ export async function requestPasswordReset(
     }
   }
 
-  // Same response whether or not the email exists — don't leak account existence.
+  // Same response whether or not the email exists or the IP was throttled —
+  // don't leak account existence or rate-limit state.
   return { success: true };
 }
 

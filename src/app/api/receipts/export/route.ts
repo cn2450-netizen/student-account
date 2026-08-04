@@ -12,6 +12,14 @@ function escapeCsv(value: string | number | null | undefined): string {
   return str;
 }
 
+// Neutralizes CSV/Excel formula injection: a cell starting with =, +, -, @,
+// tab, or CR gets treated as a formula by Excel/Sheets on open. Only applied
+// to free-text, user-supplied fields (name/email/student/description) — not
+// the numeric Amount column, where a leading "-" is just a negative number.
+function neutralizeFormula(value: string): string {
+  return /^[=+\-@\t\r]/.test(value) ? `'${value}` : value;
+}
+
 export async function GET(req: NextRequest) {
   const session = await getCurrentSession();
   if (!session?.user || (!can(session.user.role, "fundRequests") && !can(session.user.role, "allFunds"))) {
@@ -40,11 +48,11 @@ export async function GET(req: NextRequest) {
     r.id,
     new Date(r.sentAt).toLocaleDateString("en-US"),
     r.type,
-    r.toName,
-    r.toEmail,
-    r.studentName ?? "",
+    neutralizeFormula(r.toName),
+    neutralizeFormula(r.toEmail),
+    r.studentName ? neutralizeFormula(r.studentName) : "",
     r.amount != null ? Number(r.amount).toFixed(2) : "",
-    r.description ?? "",
+    r.description ? neutralizeFormula(r.description) : "",
     r.emailSent ? "Yes" : "No",
   ]);
 

@@ -697,7 +697,11 @@ describe("denyFundRequest()", () => {
 describe("requestPasswordReset()", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(headers).mockResolvedValue(new Headers({ "x-forwarded-for": "203.0.113.9" }) as never);
     mp.passwordResetToken.create.mockResolvedValue({} as never);
+    mp.ipRateLimit.findUnique.mockResolvedValue(null as never);
+    mp.ipRateLimit.upsert.mockResolvedValue({} as never);
+    mp.ipRateLimit.update.mockResolvedValue({} as never);
   });
 
   function formData(email: string) {
@@ -744,6 +748,39 @@ describe("requestPasswordReset()", () => {
     expect(mp.passwordResetToken.create).not.toHaveBeenCalled();
     expect(sendPasswordResetEmail).not.toHaveBeenCalled();
     expect(result.success).toBe(true);
+  });
+
+  it("silently drops the request once the per-IP limit is reached, still returning success", async () => {
+    mp.user.findUnique.mockResolvedValue({ id: "user-1", username: "parent@example.com" } as never);
+    mp.passwordResetToken.findFirst.mockResolvedValue(null as never);
+    mp.ipRateLimit.findUnique.mockResolvedValue({
+      ip: "reset:203.0.113.9",
+      count: 10,
+      resetAt: new Date(Date.now() + 60_000),
+    } as never);
+
+    const result = await requestPasswordReset({}, formData("parent@example.com"));
+
+    // Same response contract as the "no such user" case — never reveals
+    // that throttling (as opposed to a missing account) caused the no-op.
+    expect(result.success).toBe(true);
+    expect(mp.passwordResetToken.create).not.toHaveBeenCalled();
+    expect(sendPasswordResetEmail).not.toHaveBeenCalled();
+  });
+
+  it("throttles per IP independently of the per-account cooldown — different accounts, same IP, still capped", async () => {
+    mp.passwordResetToken.findFirst.mockResolvedValue(null as never);
+    mp.ipRateLimit.findUnique.mockResolvedValue({
+      ip: "reset:203.0.113.9",
+      count: 10,
+      resetAt: new Date(Date.now() + 60_000),
+    } as never);
+    mp.user.findUnique.mockResolvedValue({ id: "user-2", username: "other@example.com" } as never);
+
+    await requestPasswordReset({}, formData("other@example.com"));
+
+    // Never even looked up the user — the IP throttle short-circuits first.
+    expect(mp.user.findUnique).not.toHaveBeenCalled();
   });
 });
 
