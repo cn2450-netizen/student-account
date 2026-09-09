@@ -365,11 +365,11 @@ export async function assignAccountRequest(requestId: string, assign: boolean) {
   return { success: true };
 }
 
-// ─── Delete parent account (admin only) ─────────────────────────────────────
+// ─── Delete parent account (admin + president) ─────────────────────────────
 
 export async function deleteParentAccount(userId: string) {
   const session = await getCurrentSession();
-  if (!session?.user || !can(session.user.role, "admin")) {
+  if (!session?.user || !can(session.user.role, "deleteAccounts")) {
     return { error: "Unauthorized" };
   }
 
@@ -722,11 +722,11 @@ export async function resetUserPassword(userId: string): Promise<{ error?: strin
   return { success: true, emailSent };
 }
 
-// ─── Admin: delete user ───────────────────────────────────────────────────────
+// ─── Delete user (admin + president) ─────────────────────────────────────────
 
 export async function deleteUser(userId: string): Promise<{ error?: string; success?: boolean }> {
   const session = await getCurrentSession();
-  if (!session?.user || !can(session.user.role, "admin")) return { error: "Unauthorized" };
+  if (!session?.user || !can(session.user.role, "deleteAccounts")) return { error: "Unauthorized" };
 
   if (userId === session.user.id) return { error: "Cannot delete your own account" };
 

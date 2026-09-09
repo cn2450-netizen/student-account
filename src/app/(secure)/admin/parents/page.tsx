@@ -5,7 +5,7 @@ import { DeleteParentButton } from "@/components/delete-parent-button";
 
 export default async function AdminParentsPage() {
   const currentUser = await requirePermission("allStudents");
-  const canDelete = can(currentUser.role, "admin");
+  const canDelete = can(currentUser.role, "deleteAccounts");
 
   const parents = await prisma.user.findMany({
     where: { role: "PARENT" },
