@@ -13,6 +13,8 @@ export default async function SecureLayout({ children }: { children: React.React
   const nav = [
     { href: "/dashboard",              label: "Dashboard",           visible: true },
     { href: "/admin/approvals",        label: "Account Approvals",   visible: can(role, "approvals") },
+    { href: "/expenses",               label: "Enter Expenses",      visible: can(role, "enterExpenses") },
+    { href: "/admin/expense-approvals", label: "Expense Approvals",  visible: can(role, "approveExpenses") },
     { href: "/admin/expenses",         label: "All Expenses",        visible: can(role, "allFunds") },
     { href: "/admin/students",         label: "All Students",        visible: can(role, "allStudents") },
     { href: "/admin/receipts",         label: "Email Receipts",      visible: can(role, "fundRequests") || can(role, "allFunds") },

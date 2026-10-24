@@ -96,6 +96,7 @@ model Student {
   createdAt    DateTime           @default(now())
   fundraising  FundraisingEntry[]
   expenses     ExpenseEntry[]
+  pendingExpenses PendingExpense[]
   fundRequests FundRequest[]
   emailReceipts EmailReceipt[]
 }
@@ -156,6 +157,24 @@ model ExpenseEntry {
   description String
   date        DateTime @default(now())
   createdAt   DateTime @default(now())
+}
+
+// ─── Pending expenses (treasurer enters → vice president approves) ───────────
+// Not counted in any balance until approved; approval creates the ExpenseEntry.
+
+model PendingExpense {
+  id          String            @id @default(cuid())
+  studentId   String
+  student     Student           @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  amount      Decimal           @db.Decimal(10, 2)
+  description String
+  date        DateTime          @default(now())
+  status      FundRequestStatus @default(PENDING)
+  enteredBy   String
+  notes       String?           // reviewer notes or rejection reason
+  reviewedBy  String?
+  reviewedAt  DateTime?
+  createdAt   DateTime          @default(now())
 }
 
 // ─── Fund requests (parent → treasurer approval) ─────────────────────────────

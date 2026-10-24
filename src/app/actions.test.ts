@@ -61,6 +61,9 @@ import {
   submitFundRequest,
   approveFundRequest,
   transferGraduatedBalance,
+  addExpenseEntry,
+  approvePendingExpense,
+  rejectPendingExpense,
 } from "@/app/actions";
 
 // ── Typed references to the mocked prisma sub-objects ────────────────────────
@@ -74,6 +77,7 @@ const mp = prisma as unknown as DeepMockProxy<PrismaClient>;
 const adminSession    = { user: { id: "u-admin",     name: "admin@school.org",     role: "ADMIN"     } };
 const presidentSession = { user: { id: "u-president", name: "president@school.org", role: "PRESIDENT" } };
 const treasurerSession = { user: { id: "u-treasurer", name: "treasurer@school.org", role: "TREASURER" } };
+const vicePresidentSession = { user: { id: "u-vp", name: "vp@school.org", role: "VICE_PRESIDENT" } };
 const parentSession   = { user: { id: "u-parent",    name: "parent@school.org",    role: "PARENT"    } };
 const fundraisingManagerSession = { user: { id: "u-fm", name: "fm@school.org", role: "FUNDRAISING_MANAGER" } };
 const boardMemberSession = { user: { id: "u-board", name: "board@school.org", role: "BOARD_MEMBER" } };
@@ -1569,5 +1573,148 @@ describe("transferGraduatedBalance()", () => {
         }),
       }),
     );
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// addExpenseEntry() / approvePendingExpense() / rejectPendingExpense()
+// ─────────────────────────────────────────────────────────────────────────────
+
+function expenseForm(studentId = "student-1") {
+  const fd = new FormData();
+  fd.set("studentId", studentId);
+  fd.set("amount", "25.00");
+  fd.set("description", "Trip deposit");
+  return fd;
+}
+
+describe("addExpenseEntry()", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mp.student.findUnique.mockResolvedValue({ id: "student-1", profile: null } as never);
+  });
+
+  it("holds a treasurer's entry as pending and does not touch the balance", async () => {
+    vi.mocked(getCurrentSession).mockResolvedValue(treasurerSession as never);
+
+    const result = await addExpenseEntry({}, expenseForm());
+
+    expect(result).toEqual({ success: true, pendingApproval: true });
+    expect(mp.pendingExpense.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ studentId: "student-1", enteredBy: "treasurer@school.org" }),
+      }),
+    );
+    expect(mp.expenseEntry.create).not.toHaveBeenCalled();
+  });
+
+  it("posts an admin's entry immediately", async () => {
+    vi.mocked(getCurrentSession).mockResolvedValue(adminSession as never);
+
+    const result = await addExpenseEntry({}, expenseForm());
+
+    expect(result).toEqual({ success: true });
+    expect(mp.expenseEntry.create).toHaveBeenCalledTimes(1);
+    expect(mp.pendingExpense.create).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["parent", parentSession],
+    ["president", presidentSession],
+    ["vice president", vicePresidentSession],
+    ["fundraising manager", fundraisingManagerSession],
+    ["board member", boardMemberSession],
+  ])("rejects a %s", async (_label, session) => {
+    vi.mocked(getCurrentSession).mockResolvedValue(session as never);
+
+    const result = await addExpenseEntry({}, expenseForm());
+
+    expect(result.error).toBe("Unauthorized");
+    expect(mp.expenseEntry.create).not.toHaveBeenCalled();
+    expect(mp.pendingExpense.create).not.toHaveBeenCalled();
+  });
+});
+
+describe("approvePendingExpense()", () => {
+  const pendingRow = {
+    id: "pe-1",
+    status: "PENDING",
+    studentId: "student-1",
+    amount: 25,
+    description: "Trip deposit",
+    date: new Date("2026-10-01"),
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mp.pendingExpense.findUnique.mockResolvedValue(pendingRow as never);
+    mp.pendingExpense.updateMany.mockResolvedValue({ count: 1 } as never);
+    mp.student.findUnique.mockResolvedValue({ id: "student-1", profile: null } as never);
+  });
+
+  it("creates the expense entry when the vice president approves", async () => {
+    vi.mocked(getCurrentSession).mockResolvedValue(vicePresidentSession as never);
+
+    const result = await approvePendingExpense("pe-1");
+
+    expect(result).toEqual({ success: true });
+    expect(mp.expenseEntry.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ studentId: "student-1", amount: 25, description: "Trip deposit" }),
+    });
+  });
+
+  it("lets an admin approve", async () => {
+    vi.mocked(getCurrentSession).mockResolvedValue(adminSession as never);
+    expect(await approvePendingExpense("pe-1")).toEqual({ success: true });
+  });
+
+  it("does not let the treasurer approve their own entry", async () => {
+    vi.mocked(getCurrentSession).mockResolvedValue(treasurerSession as never);
+
+    const result = await approvePendingExpense("pe-1");
+
+    expect(result.error).toBe("Unauthorized");
+    expect(mp.expenseEntry.create).not.toHaveBeenCalled();
+  });
+
+  it("does not post twice when the row was already claimed", async () => {
+    vi.mocked(getCurrentSession).mockResolvedValue(vicePresidentSession as never);
+    mp.pendingExpense.updateMany.mockResolvedValue({ count: 0 } as never);
+
+    const result = await approvePendingExpense("pe-1");
+
+    expect(result.error).toMatch(/already processed/i);
+    expect(mp.expenseEntry.create).not.toHaveBeenCalled();
+  });
+});
+
+describe("rejectPendingExpense()", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mp.pendingExpense.updateMany.mockResolvedValue({ count: 1 } as never);
+  });
+
+  it("requires a reason", async () => {
+    vi.mocked(getCurrentSession).mockResolvedValue(vicePresidentSession as never);
+    const result = await rejectPendingExpense("pe-1", "  ");
+    expect(result.error).toMatch(/reason/i);
+    expect(mp.pendingExpense.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("marks the entry denied without creating an expense", async () => {
+    vi.mocked(getCurrentSession).mockResolvedValue(vicePresidentSession as never);
+
+    const result = await rejectPendingExpense("pe-1", "Not budgeted");
+
+    expect(result).toEqual({ success: true });
+    expect(mp.pendingExpense.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: "DENIED", notes: "Not budgeted" }) }),
+    );
+    expect(mp.expenseEntry.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects a treasurer", async () => {
+    vi.mocked(getCurrentSession).mockResolvedValue(treasurerSession as never);
+    expect((await rejectPendingExpense("pe-1", "no")).error).toBe("Unauthorized");
   });
 });

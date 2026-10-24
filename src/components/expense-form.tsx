@@ -6,7 +6,7 @@ import { addExpenseEntry } from "@/app/actions";
 type Student = { id: string; firstName: string; lastName: string };
 
 export function ExpenseForm({ students }: { students: Student[] }) {
-  const [state, action, pending] = useActionState(addExpenseEntry, { error: undefined, success: undefined });
+  const [state, action, pending] = useActionState(addExpenseEntry, { error: undefined, success: undefined, pendingApproval: undefined });
 
   if (students.length === 0) {
     return (
@@ -24,7 +24,7 @@ export function ExpenseForm({ students }: { students: Student[] }) {
       ) : null}
       {state.success ? (
         <p className="mb-3 rounded-lg bg-emerald-900/40 px-3 py-2 text-sm text-emerald-400">
-          Entry added.
+          {state.pendingApproval ? "Entry submitted — awaiting vice president approval." : "Entry added."}
         </p>
       ) : null}
       <div className="flex flex-wrap gap-3">

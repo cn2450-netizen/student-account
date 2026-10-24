@@ -58,12 +58,15 @@ export default async function DashboardPage() {
   // Staff dashboard (Treasurer / Fundraising Manager)
   const isStaff = can(session.user.role, "allStudents") && !isAdmin;
   if (isStaff) {
-    const [totalStudents, totalFundraising, totalExpenses, pendingRequests] = await Promise.all([
+    const [totalStudents, totalFundraising, totalExpenses, pendingRequests, pendingExpenses] = await Promise.all([
       prisma.student.count(),
       prisma.fundraisingEntry.aggregate({ _sum: { amount: true } }),
       prisma.expenseEntry.aggregate({ _sum: { amount: true } }),
       can(session.user.role, "fundRequests")
         ? prisma.fundRequest.count({ where: { status: "PENDING" } })
+        : Promise.resolve(0),
+      can(session.user.role, "approveExpenses")
+        ? prisma.pendingExpense.count({ where: { status: "PENDING" } })
         : Promise.resolve(0),
     ]);
 
@@ -78,6 +81,17 @@ export default async function DashboardPage() {
             {session.user.role.replace(/_/g, " ").toLowerCase()} overview
           </p>
         </div>
+
+        {pendingExpenses > 0 && (
+          <div className="rounded-xl border border-amber-500/30 bg-amber-900/20 p-4">
+            <p className="text-sm font-medium text-amber-300">
+              {pendingExpenses} expense{pendingExpenses !== 1 ? "s" : ""} awaiting your approval.{" "}
+              <a href="/admin/expense-approvals" className="underline hover:text-amber-200">
+                Review now →
+              </a>
+            </p>
+          </div>
+        )}
 
         {pendingRequests > 0 && (
           <div className="rounded-xl border border-amber-500/30 bg-amber-900/20 p-4">

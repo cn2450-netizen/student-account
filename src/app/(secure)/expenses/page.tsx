@@ -10,6 +10,7 @@ export default async function ExpensesPage() {
   if (!session?.user) redirect("/login");
 
   const isAdmin = can(session.user.role, "allFunds");
+  const canEnter = can(session.user.role, "enterExpenses");
   const isParent = session.user.role === "PARENT";
 
   let students: Array<{ id: string; firstName: string; lastName: string }> = [];
@@ -46,6 +47,14 @@ export default async function ExpensesPage() {
     }
   }
 
+  const pending = isAdmin
+    ? await prisma.pendingExpense.findMany({
+        where: { status: "PENDING" },
+        include: { student: { select: { firstName: true, lastName: true } } },
+        orderBy: { createdAt: "desc" },
+      })
+    : [];
+
   const total = entries.reduce((sum, e) => sum + e.amount, 0);
 
   return (
@@ -55,11 +64,33 @@ export default async function ExpensesPage() {
         <p className="text-sm text-slate-400">Track expenses charged to your students&apos; accounts.</p>
       </div>
 
-      {isAdmin && <ExpenseForm students={students} />}
+      {canEnter && <ExpenseForm students={students} />}
       {isParent && (
         <div className="rounded-xl border border-slate-700 bg-slate-900/60 px-4 py-3 text-sm text-slate-400">
           Expenses are recorded when a fund request is approved.{" "}
           <Link href="/request-funds" className="text-cyan-400 underline hover:text-cyan-300">Submit a fund request</Link> to have a purchase approved.
+        </div>
+      )}
+
+      {pending.length > 0 && (
+        <div className="rounded-xl border border-amber-500/30 bg-amber-900/20 p-4 space-y-2">
+          <p className="text-sm font-medium text-amber-300">
+            {pending.length} expense{pending.length !== 1 ? "s" : ""} awaiting vice president approval
+            {can(session.user.role, "approveExpenses") && (
+              <>
+                {" "}
+                <Link href="/admin/expense-approvals" className="underline hover:text-amber-200">Review now →</Link>
+              </>
+            )}
+          </p>
+          <ul className="text-sm text-slate-300 space-y-1">
+            {pending.map((p) => (
+              <li key={p.id}>
+                {p.student.firstName} {p.student.lastName} — {p.description} —{" "}
+                <span className="text-rose-400">${Number(p.amount).toFixed(2)}</span>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 

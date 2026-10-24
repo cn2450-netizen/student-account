@@ -565,13 +565,51 @@ export async function editFundraisingEntry(
 }
 
 // ─── Add expense entry ────────────────────────────────────────────────────────
+// ADMIN entries post immediately. TREASURER entries are held as a PendingExpense
+// until the vice president (or admin) approves them — see approvePendingExpense().
+
+async function postExpense(opts: {
+  studentId: string;
+  amount: number | string | { toString(): string };
+  description: string;
+  date: Date;
+}) {
+  await prisma.expenseEntry.create({
+    data: {
+      studentId: opts.studentId,
+      amount: opts.amount as number,
+      description: opts.description,
+      date: opts.date,
+    },
+  });
+
+  // Send withdrawal notification to the student's parent (if enabled in settings)
+  try {
+    const student = await prisma.student.findUnique({
+      where: { id: opts.studentId },
+      include: { profile: { include: { user: { select: { username: true } } } } },
+    });
+    if (student?.profile) {
+      await sendWithdrawReceipt({
+        to: student.profile.user.username,
+        parentName: `${student.profile.firstName} ${student.profile.lastName}`,
+        studentName: `${student.firstName} ${student.lastName}`,
+        studentId: student.id,
+        amount: Number(opts.amount).toFixed(2),
+        description: opts.description,
+        date: opts.date.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }),
+      });
+    }
+  } catch { /* email failure must not fail the expense entry */ }
+}
 
 export async function addExpenseEntry(
-  _prev: { error?: string; success?: boolean },
+  _prev: { error?: string; success?: boolean; pendingApproval?: boolean },
   formData: FormData,
-): Promise<{ error?: string; success?: boolean }> {
+): Promise<{ error?: string; success?: boolean; pendingApproval?: boolean }> {
   const session = await getCurrentSession();
   if (!session?.user) return { error: "Not authenticated" };
+  if (!can(session.user.role, "enterExpenses")) return { error: "Unauthorized" };
 
   const parsed = EntrySchema.safeParse({
     studentId: formData.get("studentId"),
@@ -583,51 +621,103 @@ export async function addExpenseEntry(
     return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
   }
 
-  if (!can(session.user.role, "allFunds")) {
-    const profile = await prisma.parentProfile.findUnique({
-      where: { userId: session.user.id },
-    });
-    if (!profile) return { error: "Profile not found" };
-
-    const student = await prisma.student.findUnique({
-      where: { id: parsed.data.studentId },
-    });
-    if (!student || student.profileId !== profile.id) {
-      return { error: "Student not found" };
-    }
-  }
+  const student = await prisma.student.findUnique({ where: { id: parsed.data.studentId } });
+  if (!student) return { error: "Student not found" };
 
   const entryDate = parsed.data.date ? new Date(parsed.data.date) : new Date();
 
-  await prisma.expenseEntry.create({
+  // Anyone who can approve (admin) is trusted to post directly.
+  if (can(session.user.role, "approveExpenses")) {
+    await postExpense({
+      studentId: parsed.data.studentId,
+      amount: parsed.data.amount,
+      description: parsed.data.description,
+      date: entryDate,
+    });
+    revalidatePath("/expenses");
+    revalidatePath("/admin/expenses");
+    revalidatePath("/dashboard");
+    return { success: true };
+  }
+
+  await prisma.pendingExpense.create({
     data: {
       studentId: parsed.data.studentId,
       amount: parsed.data.amount,
       description: parsed.data.description,
       date: entryDate,
+      enteredBy: session.user.name,
     },
   });
 
-  // Send withdrawal notification to the student's parent (if enabled in settings)
-  try {
-    const student = await prisma.student.findUnique({
-      where: { id: parsed.data.studentId },
-      include: { profile: { include: { user: { select: { username: true } } } } },
-    });
-    if (student?.profile) {
-      await sendWithdrawReceipt({
-        to: student.profile.user.username,
-        parentName: `${student.profile.firstName} ${student.profile.lastName}`,
-        studentName: `${student.firstName} ${student.lastName}`,
-        studentId: student.id,
-        amount: Number(parsed.data.amount).toFixed(2),
-        description: parsed.data.description,
-        date: entryDate.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }),
-      });
-    }
-  } catch { /* email failure must not fail the expense entry */ }
-
   revalidatePath("/expenses");
+  revalidatePath("/admin/expense-approvals");
+  revalidatePath("/dashboard");
+  return { success: true, pendingApproval: true };
+}
+
+// ─── Vice president: approve / reject a pending expense ──────────────────────
+
+export async function approvePendingExpense(
+  pendingId: string,
+  notes?: string,
+): Promise<{ error?: string; success?: boolean }> {
+  const session = await getCurrentSession();
+  if (!session?.user || !can(session.user.role, "approveExpenses")) return { error: "Unauthorized" };
+
+  const pending = await prisma.pendingExpense.findUnique({ where: { id: pendingId } });
+  if (!pending || pending.status !== "PENDING") return { error: "Expense not found or already processed" };
+
+  // Claim the row first so a double-click can't post the expense twice.
+  const claimed = await prisma.pendingExpense.updateMany({
+    where: { id: pendingId, status: "PENDING" },
+    data: {
+      status: "APPROVED",
+      notes: notes?.trim() || null,
+      reviewedBy: session.user.name,
+      reviewedAt: new Date(),
+    },
+  });
+  if (claimed.count === 0) return { error: "Expense not found or already processed" };
+
+  await postExpense({
+    studentId: pending.studentId,
+    amount: pending.amount,
+    description: pending.description,
+    date: pending.date,
+  });
+
+  revalidatePath("/admin/expense-approvals");
+  revalidatePath("/admin/expenses");
+  revalidatePath("/expenses");
+  revalidatePath("/dashboard");
+  return { success: true };
+}
+
+export async function rejectPendingExpense(
+  pendingId: string,
+  notes: string,
+): Promise<{ error?: string; success?: boolean }> {
+  const session = await getCurrentSession();
+  if (!session?.user || !can(session.user.role, "approveExpenses")) return { error: "Unauthorized" };
+
+  const reason = notes?.trim();
+  if (!reason) return { error: "A reason is required when rejecting an expense" };
+
+  const result = await prisma.pendingExpense.updateMany({
+    where: { id: pendingId, status: "PENDING" },
+    data: {
+      status: "DENIED",
+      notes: reason,
+      reviewedBy: session.user.name,
+      reviewedAt: new Date(),
+    },
+  });
+  if (result.count === 0) return { error: "Expense not found or already processed" };
+
+  revalidatePath("/admin/expense-approvals");
+  revalidatePath("/expenses");
+  revalidatePath("/dashboard");
   return { success: true };
 }
 
@@ -752,7 +842,7 @@ export async function deleteUser(userId: string): Promise<{ error?: string; succ
 
 const CreateStaffUserSchema = z.object({
   username: z.string().trim().email("A valid email address is required"),
-  role: z.enum(["ADMIN", "PRESIDENT", "TREASURER", "FUNDRAISING_MANAGER", "BOARD_MEMBER"]),
+  role: z.enum(["ADMIN", "PRESIDENT", "VICE_PRESIDENT", "TREASURER", "FUNDRAISING_MANAGER", "BOARD_MEMBER"]),
 });
 
 export async function createStaffUser(

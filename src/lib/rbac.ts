@@ -11,12 +11,15 @@ export type Permission =
   | "submitRequests"      // submit fund requests (parent)
   | "unlockAccounts"     // unlock permanently locked accounts (president + admin)
   | "manageStaffAccounts" // change staff (non-parent) account email addresses (president + admin)
-  | "deleteAccounts";    // delete user / parent accounts, e.g. incorrectly created ones (president + admin)
+  | "deleteAccounts"
+  | "enterExpenses"       // enter withdrawals/expenses on a student account (treasurer + admin)
+  | "approveExpenses";    // approve/reject entered expenses (vice president + admin)    // delete user / parent accounts, e.g. incorrectly created ones (president + admin)
 
 const ROLE_PERMISSIONS: Record<string, Permission[]> = {
-  ADMIN:                ["admin", "settings", "approvals", "allStudents", "allFunds", "fundRequests", "manageFundraising", "ownStudents", "ownFunds", "unlockAccounts", "manageStaffAccounts", "deleteAccounts"],
+  ADMIN:                ["admin", "settings", "approvals", "allStudents", "allFunds", "fundRequests", "manageFundraising", "ownStudents", "ownFunds", "unlockAccounts", "manageStaffAccounts", "deleteAccounts", "enterExpenses", "approveExpenses"],
   PRESIDENT:            ["settings", "approvals", "allStudents", "allFunds", "fundRequests", "unlockAccounts", "manageStaffAccounts", "deleteAccounts"],
-  TREASURER:            ["approvals", "allStudents", "allFunds", "fundRequests", "manageFundraising"],
+  VICE_PRESIDENT:       ["allStudents", "allFunds", "approveExpenses"],
+  TREASURER:            ["approvals", "allStudents", "allFunds", "fundRequests", "manageFundraising", "enterExpenses"],
   FUNDRAISING_MANAGER:  ["allStudents", "manageFundraising"],
   BOARD_MEMBER:         ["allStudents"],
   PARENT:               ["ownStudents", "ownFunds", "submitRequests"],

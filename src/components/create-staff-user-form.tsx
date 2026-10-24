@@ -56,6 +56,7 @@ export function CreateStaffUserForm() {
           >
             <option value="TREASURER">Treasurer (max 1)</option>
             <option value="PRESIDENT">President</option>
+            <option value="VICE_PRESIDENT">Vice President</option>
             <option value="FUNDRAISING_MANAGER">Fundraising Manager</option>
             <option value="BOARD_MEMBER">Board Member</option>
             <option value="ADMIN">Admin</option>
