@@ -55,6 +55,20 @@ export default async function ExpensesPage() {
       })
     : [];
 
+  // Rejected entries stay visible (with the reason) so the enterer doesn't re-key them blindly.
+  // Enterers see their own; approvers/admin see everyone's.
+  const rejected = isAdmin
+    ? await prisma.pendingExpense.findMany({
+        where: {
+          status: "DENIED",
+          ...(can(session.user.role, "approveExpenses") ? {} : { enteredBy: session.user.name }),
+        },
+        include: { student: { select: { firstName: true, lastName: true } } },
+        orderBy: { reviewedAt: "desc" },
+        take: 20,
+      })
+    : [];
+
   const total = entries.reduce((sum, e) => sum + e.amount, 0);
 
   return (
@@ -88,6 +102,25 @@ export default async function ExpensesPage() {
               <li key={p.id}>
                 {p.student.firstName} {p.student.lastName} — {p.description} —{" "}
                 <span className="text-rose-400">${Number(p.amount).toFixed(2)}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {rejected.length > 0 && (
+        <div className="rounded-xl border border-red-500/30 bg-red-900/20 p-4 space-y-2">
+          <p className="text-sm font-medium text-red-300">Rejected expenses</p>
+          <ul className="space-y-2 text-sm text-slate-300">
+            {rejected.map((r) => (
+              <li key={r.id}>
+                {r.student.firstName} {r.student.lastName} — {r.description} —{" "}
+                <span className="text-rose-400">${Number(r.amount).toFixed(2)}</span>
+                <span className="block text-xs text-slate-400">
+                  Rejected by {r.reviewedBy ?? "—"}
+                  {r.reviewedAt ? ` on ${new Date(r.reviewedAt).toLocaleDateString()}` : ""}
+                  {r.notes ? ` — ${r.notes}` : ""}
+                </span>
               </li>
             ))}
           </ul>
