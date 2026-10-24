@@ -24,7 +24,7 @@ export function ExpenseForm({ students }: { students: Student[] }) {
       ) : null}
       {state.success ? (
         <p className="mb-3 rounded-lg bg-emerald-900/40 px-3 py-2 text-sm text-emerald-400">
-          {state.pendingApproval ? "Entry submitted — awaiting vice president approval." : "Entry added."}
+          {state.pendingApproval ? "Entry submitted — awaiting vice president / secretary approval." : "Entry added."}
         </p>
       ) : null}
       <div className="flex flex-wrap gap-3">

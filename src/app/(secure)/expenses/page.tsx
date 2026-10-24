@@ -75,7 +75,7 @@ export default async function ExpensesPage() {
       {pending.length > 0 && (
         <div className="rounded-xl border border-amber-500/30 bg-amber-900/20 p-4 space-y-2">
           <p className="text-sm font-medium text-amber-300">
-            {pending.length} expense{pending.length !== 1 ? "s" : ""} awaiting vice president approval
+            {pending.length} expense{pending.length !== 1 ? "s" : ""} awaiting vice president / secretary approval
             {can(session.user.role, "approveExpenses") && (
               <>
                 {" "}

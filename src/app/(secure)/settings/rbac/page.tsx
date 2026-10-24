@@ -30,12 +30,22 @@ const ROLES = [
       "Funds Requested",
       "Account Approvals",
       "Email Receipts",
+      "Enter Expenses (needs VP/Secretary approval)",
       "Unlock Locked Accounts",
       "Settings",
     ],
   },
   {
     role: "VICE_PRESIDENT",
+    permissions: [
+      "Dashboard",
+      "All Students",
+      "All Expenses",
+      "Expense Approvals",
+    ],
+  },
+  {
+    role: "SECRETARY",
     permissions: [
       "Dashboard",
       "All Students",
@@ -55,7 +65,7 @@ const ROLES = [
       "Funds Requested",
       "Account Approvals",
       "Email Receipts",
-      "Enter Expenses (needs VP approval)",
+      "Enter Expenses (needs VP/Secretary approval)",
     ],
   },
   {

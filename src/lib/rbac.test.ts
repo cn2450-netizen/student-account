@@ -14,10 +14,10 @@ describe("can()", () => {
 
   // ── PRESIDENT ────────────────────────────────────────────────────────────
   describe("PRESIDENT", () => {
-    it.each(["settings", "approvals", "allStudents", "allFunds", "fundRequests", "unlockAccounts", "manageStaffAccounts", "deleteAccounts"] as const)(
+    it.each(["settings", "approvals", "allStudents", "allFunds", "fundRequests", "unlockAccounts", "manageStaffAccounts", "deleteAccounts", "enterExpenses"] as const)(
       "has %s", (p) => expect(can("PRESIDENT", p)).toBe(true)
     );
-    it.each(["admin", "manageFundraising", "ownStudents", "ownFunds", "submitRequests", "enterExpenses", "approveExpenses"] as const)(
+    it.each(["admin", "manageFundraising", "ownStudents", "ownFunds", "submitRequests", "approveExpenses"] as const)(
       "does not have %s", (p) => expect(can("PRESIDENT", p)).toBe(false)
     );
   });
@@ -32,6 +32,19 @@ describe("can()", () => {
       "unlockAccounts", "manageStaffAccounts", "deleteAccounts", "ownStudents", "ownFunds", "submitRequests",
     ] as const)(
       "does not have %s", (p) => expect(can("VICE_PRESIDENT", p)).toBe(false)
+    );
+  });
+
+  // ── SECRETARY ────────────────────────────────────────────────────────────
+  describe("SECRETARY", () => {
+    it.each(["allStudents", "allFunds", "approveExpenses"] as const)(
+      "has %s", (p) => expect(can("SECRETARY", p)).toBe(true)
+    );
+    it.each([
+      "admin", "settings", "approvals", "fundRequests", "manageFundraising", "enterExpenses",
+      "unlockAccounts", "manageStaffAccounts", "deleteAccounts", "ownStudents", "ownFunds", "submitRequests",
+    ] as const)(
+      "does not have %s", (p) => expect(can("SECRETARY", p)).toBe(false)
     );
   });
 

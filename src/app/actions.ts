@@ -842,7 +842,7 @@ export async function deleteUser(userId: string): Promise<{ error?: string; succ
 
 const CreateStaffUserSchema = z.object({
   username: z.string().trim().email("A valid email address is required"),
-  role: z.enum(["ADMIN", "PRESIDENT", "VICE_PRESIDENT", "TREASURER", "FUNDRAISING_MANAGER", "BOARD_MEMBER"]),
+  role: z.enum(["ADMIN", "PRESIDENT", "VICE_PRESIDENT", "SECRETARY", "TREASURER", "FUNDRAISING_MANAGER", "BOARD_MEMBER"]),
 });
 
 export async function createStaffUser(

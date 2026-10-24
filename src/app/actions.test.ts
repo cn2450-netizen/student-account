@@ -78,6 +78,7 @@ const adminSession    = { user: { id: "u-admin",     name: "admin@school.org",  
 const presidentSession = { user: { id: "u-president", name: "president@school.org", role: "PRESIDENT" } };
 const treasurerSession = { user: { id: "u-treasurer", name: "treasurer@school.org", role: "TREASURER" } };
 const vicePresidentSession = { user: { id: "u-vp", name: "vp@school.org", role: "VICE_PRESIDENT" } };
+const secretarySession = { user: { id: "u-sec", name: "sec@school.org", role: "SECRETARY" } };
 const parentSession   = { user: { id: "u-parent",    name: "parent@school.org",    role: "PARENT"    } };
 const fundraisingManagerSession = { user: { id: "u-fm", name: "fm@school.org", role: "FUNDRAISING_MANAGER" } };
 const boardMemberSession = { user: { id: "u-board", name: "board@school.org", role: "BOARD_MEMBER" } };
@@ -1608,6 +1609,15 @@ describe("addExpenseEntry()", () => {
     expect(mp.expenseEntry.create).not.toHaveBeenCalled();
   });
 
+  it("holds a president's entry as pending", async () => {
+    vi.mocked(getCurrentSession).mockResolvedValue(presidentSession as never);
+
+    const result = await addExpenseEntry({}, expenseForm());
+
+    expect(result).toEqual({ success: true, pendingApproval: true });
+    expect(mp.expenseEntry.create).not.toHaveBeenCalled();
+  });
+
   it("posts an admin's entry immediately", async () => {
     vi.mocked(getCurrentSession).mockResolvedValue(adminSession as never);
 
@@ -1620,8 +1630,8 @@ describe("addExpenseEntry()", () => {
 
   it.each([
     ["parent", parentSession],
-    ["president", presidentSession],
     ["vice president", vicePresidentSession],
+    ["secretary", secretarySession],
     ["fundraising manager", fundraisingManagerSession],
     ["board member", boardMemberSession],
   ])("rejects a %s", async (_label, session) => {
@@ -1661,6 +1671,17 @@ describe("approvePendingExpense()", () => {
     expect(mp.expenseEntry.create).toHaveBeenCalledWith({
       data: expect.objectContaining({ studentId: "student-1", amount: 25, description: "Trip deposit" }),
     });
+  });
+
+  it("lets the secretary approve", async () => {
+    vi.mocked(getCurrentSession).mockResolvedValue(secretarySession as never);
+    expect(await approvePendingExpense("pe-1")).toEqual({ success: true });
+  });
+
+  it("does not let the president approve their own entry", async () => {
+    vi.mocked(getCurrentSession).mockResolvedValue(presidentSession as never);
+    expect((await approvePendingExpense("pe-1")).error).toBe("Unauthorized");
+    expect(mp.expenseEntry.create).not.toHaveBeenCalled();
   });
 
   it("lets an admin approve", async () => {
